@@ -1,147 +1,59 @@
-# Histology AI Classification
+# Histology AI Classification (DenseNet121)
 
 > AI-Powered Learning Assistant for Medical Students Studying Histology
 
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
 [![TensorFlow](https://img.shields.io/badge/TensorFlow-2.x-orange.svg)](https://www.tensorflow.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
 
-## Overview
+## Educational Goal
 
-This research project develops a deep learning system for automatic classification of human histopathological tissue types from H&E-stained microscope slide images. The system is designed to serve as an educational tool that helps medical students identify tissue types and learn about their characteristics.
+This project develops a deep learning system to classify human histopathological tissue types from H&E-stained microscope slides. It is designed as an educational tool to help medical students identify tissue types and learn their characteristics.
 
-### System Architecture
+**⚠️ Disclaimer:** This application is intended *exclusively* for educational use. It is not a medical diagnostic device.
 
-```
-Medical Student
-        ↓
-Take a picture of a microscope slide
-        ↓
-Deep Learning Model
-        ↓
-Predict tissue type
-        ↓
-Return confidence score
-        ↓
-Display educational information about the tissue
-```
+## Architecture
 
-### Models
+Currently, the project implements a **DenseNet121** architecture developed by **Yassine**. 
+It utilizes a **5-fold stratified cross-validation** strategy to ensure robust evaluation across the dataset.
 
-Two models are developed independently and later combined:
+## Training Environment
 
-| Model | Architect | Status |
-|---|---|---|
-| DenseNet121 | Yassine | In Progress |
-| ResNet50V2 | Teammate | In Progress |
-| Ensemble | Collaborative | Planned |
+Due to hardware constraints, the models are trained on **Google Colab** using GPU runtimes. 
+Data, manifests, and model checkpoints are saved to **Google Drive** for persistence.
 
-## Dataset
-
-**Human Histopathological H&E Stained Nuclei Images** from Kaggle.
-
-> The raw dataset should be placed in `data/raw/` and is excluded from version control.
-
-## Project Structure
+## Repository Structure
 
 ```
 histology-ai-classification/
-│
-├── configs/                    # Configuration files (YAML)
-├── data/                       # All data (excluded from git)
-│   ├── raw/                    # Original unmodified dataset
-│   ├── processed/              # Cleaned and preprocessed data
-│   ├── augmented/              # Augmented training data
-│   └── external/               # External reference data
-│
-├── docs/                       # Project documentation
-├── experiments/                # Experiment logs and tracking
-├── models/                     # Saved models and checkpoints
-│   ├── saved/                  # Final trained models
-│   ├── checkpoints/            # Training checkpoints
-│   └── exports/                # Exported models (TFLite, ONNX)
-│
-├── notebooks/                  # Jupyter notebooks (exploration only)
-├── reports/                    # Generated reports and figures
-│   ├── figures/                # Plots and visualizations
-│   └── metrics/                # Evaluation metrics
-│
-├── src/                        # Source code
-│   ├── data/                   # Data loading and processing
-│   ├── models/                 # Model architectures
-│   ├── training/               # Training pipelines
-│   ├── evaluation/             # Evaluation and metrics
-│   ├── visualization/          # Plotting and visual analysis
-│   ├── callbacks/              # Custom training callbacks
-│   └── utils/                  # Shared utilities
-│
-├── tests/                      # Unit and integration tests
-├── api/                        # Future backend API
-├── mobile/                     # Future mobile application
-│
-├── configs/                    # Configuration files
-├── requirements.txt            # Python dependencies
-├── pyproject.toml              # Project metadata and build config
-├── LICENSE                     # MIT License
-└── .gitignore                  # Git exclusions
+├── configs/             # YAML configuration (densenet121.yaml)
+├── data/
+│   ├── manifests/       # Generated CSV metadata and folds
+│   └── raw/             # Raw dataset (gitignored)
+├── notebooks/colab/     # Google Colab notebooks for execution
+├── src/
+│   ├── data/            # Dataset exploration, manifests, pipeline
+│   ├── evaluation/      # Metrics and scoring
+│   ├── models/          # DenseNet121 definition
+│   └── training/        # 5-fold CV training loop
+├── models/              # Saved model checkpoints
+├── reports/             # Generated metrics
+└── tests/               # Unit tests
 ```
 
-## Installation
+## How to Run
 
-```bash
-# Clone the repository
-git clone https://github.com/<org>/histology-ai-classification.git
-cd histology-ai-classification
+1. Place the dataset in `data/raw/Human_Histopathological_H_E_Stained_Nuclei_Images`.
+2. Open the Colab notebooks in `notebooks/colab/`:
+   - `01_dataset_preparation.ipynb` to explore the data and generate folds.
+   - `02_train_densenet121.ipynb` to execute the 5-fold training loop.
 
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-.venv\Scripts\activate     # Windows
+## Future Work
 
-# Install dependencies
-pip install -r requirements.txt
-```
-
-## Configuration
-
-Copy the example configuration and adjust for your environment:
-
-```bash
-cp configs/config.example.yaml configs/config.yaml
-```
-
-## Usage
-
-> **Note:** This section will be updated as training pipelines are implemented.
-
-## Reproducibility
-
-This project follows strict reproducibility guidelines:
-
-- All random seeds are configurable via `configs/config.yaml`
-- Experiment parameters are logged in `experiments/`
-- Data processing pipelines are deterministic when seeded
-- Model checkpoints are versioned
-
-## Technology Stack
-
-| Category | Technology |
-|---|---|
-| Language | Python 3.11 |
-| Deep Learning | TensorFlow / Keras |
-| Image Processing | OpenCV |
-| Numerical | NumPy |
-| Data Handling | Pandas |
-| Visualization | Matplotlib |
-| ML Utilities | Scikit-learn |
-
-## License
-
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
-
-## Authors
-
-- **Yassine** — DenseNet121 Architecture
-- **Teammate** — ResNet50V2 Architecture
+The following features are planned for future development and are *not* currently implemented in this simplified branch:
+- **ResNet50V2** (to be developed by the teammate).
+- **Grad-CAM** interpretability for visual explanations.
+- **Ensemble** model combining both architectures.
+- **REST API** backend for serving predictions.
+- **Web Frontend** and **Mobile App** interfaces.

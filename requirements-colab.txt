@@ -1,0 +1,17 @@
+# ============================================================
+# Additional dependencies for Google Colab
+# ============================================================
+# TensorFlow is already pre-installed in Colab.
+# Only install packages that Colab does not include by default
+# or that need a specific version.
+# ============================================================
+
+pyyaml>=6.0.1
+pandas>=2.2.0
+numpy>=1.26.0
+scikit-learn>=1.4.0
+opencv-python-headless>=4.9.0
+matplotlib>=3.8.0
+Pillow>=10.2.0
+pytest>=8.0.0
+tqdm>=4.66.0

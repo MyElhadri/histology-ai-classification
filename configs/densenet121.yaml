@@ -1,0 +1,30 @@
+project:
+  name: histology-ai-classification
+  seed: 42
+
+data:
+  dataset_root: data/raw/Human_Histopathological_H_E_Stained_Nuclei_Images
+  manifest_path: data/manifests/dataset_manifest.csv
+  folds_path: data/manifests/densenet121_folds.csv
+  image_size: [224, 224]
+  num_channels: 3
+  num_classes: 22
+
+validation:
+  strategy: stratified_k_fold
+  num_folds: 5
+  shuffle: true
+  random_seed: 42
+
+model:
+  architecture: DenseNet121
+  weights: imagenet
+  dropout_rate: 0.30
+
+training:
+  environment: google_colab
+  batch_size: 16
+  head_epochs: 10
+  fine_tuning_epochs: 40
+  head_learning_rate: 0.001
+  fine_tuning_learning_rate: 0.00001
