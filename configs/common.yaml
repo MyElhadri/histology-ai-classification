@@ -1,0 +1,42 @@
+# ============================================================
+# Common Configuration — Shared by all team members
+# ============================================================
+# This file contains parameters that MUST be identical across
+# DenseNet121 (Yassine) and ResNet50V2 (Mabena) to ensure
+# comparable evaluation on the same test set.
+#
+# What is shared:
+#   - Dataset properties (image size, classes, seed)
+#   - Test split (20% common test set)
+#   - Class mapping
+#   - Primary evaluation metrics
+#
+# What is NOT shared:
+#   - Validation strategy (each member chooses their own)
+#   - Training hyperparameters (defined in model-specific YAML)
+# ============================================================
+
+project:
+  name: histology-ai-classification
+  seed: 42
+
+data:
+  image_size: [224, 224]
+  num_channels: 3
+  num_classes: 22
+  test_size: 0.20
+  augmentation_mode: online
+  manifest_path: data/manifests/dataset_manifest.csv
+  test_manifest_path: data/manifests/test_manifest.csv
+  class_mapping_path: data/manifests/class_mapping.json
+
+evaluation:
+  primary_metric: macro_f1
+  metrics:
+    - accuracy
+    - balanced_accuracy
+    - macro_f1
+    - weighted_f1
+    - precision
+    - recall
+    - top_3_accuracy

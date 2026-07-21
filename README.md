@@ -23,24 +23,26 @@ Deep Learning Model
         ↓
 Predict tissue type
         ↓
-Return confidence score
+Return confidence score + Top 3 predictions
         ↓
-Display educational information about the tissue
+Display Grad-CAM explanation + educational information
 ```
 
 ### Models
 
 Two models are developed independently and later combined:
 
-| Model | Architect | Status |
-|---|---|---|
-| DenseNet121 | Yassine | In Progress |
-| ResNet50V2 | Teammate | In Progress |
-| Ensemble | Collaborative | Planned |
+| Model | Developer | Validation Strategy | Status |
+|---|---|---|---|
+| DenseNet121 | Yassine | 5-fold stratified CV | In Progress |
+| ResNet50V2 | Mabena | Mabena's choice | In Progress |
+| Ensemble | Collaborative | — | Planned |
+
+Both models share the **same test set** (20%), **same class mapping** (22 classes), and **same evaluation metrics**. Each developer is free to choose their own validation strategy and training hyperparameters.
 
 ## Dataset
 
-**Human Histopathological H&E Stained Nuclei Images** from Kaggle.
+**Human Histopathological H&E Stained Nuclei Images** from Kaggle — 22 tissue classes.
 
 > The raw dataset should be placed in `data/raw/` and is excluded from version control.
 
@@ -50,39 +52,68 @@ Two models are developed independently and later combined:
 histology-ai-classification/
 │
 ├── configs/                    # Configuration files (YAML)
-├── data/                       # All data (excluded from git)
-│   ├── raw/                    # Original unmodified dataset
-│   ├── processed/              # Cleaned and preprocessed data
-│   ├── augmented/              # Augmented training data
-│   └── external/               # External reference data
+│   ├── common.yaml             # Shared parameters (test split, metrics, classes)
+│   ├── densenet121.yaml        # DenseNet121 config (Yassine)
+│   ├── resnet50v2.yaml         # ResNet50V2 config (Mabena)
+│   ├── config.example.yaml     # Reference template
+│   └── logging.yaml            # Logging configuration
+│
+├── data/                       # All data
+│   ├── raw/                    # Original unmodified dataset (gitignored)
+│   ├── processed/              # Preprocessed data (gitignored)
+│   ├── external/               # External reference data (gitignored)
+│   │   └── smartphone_microscope/
+│   ├── manifests/              # Metadata files (versioned)
+│   │   ├── dataset_manifest.csv
+│   │   ├── class_mapping.json
+│   │   ├── test_manifest.csv
+│   │   └── densenet121_folds.csv
+│   └── README.md
 │
 ├── docs/                       # Project documentation
-├── experiments/                # Experiment logs and tracking
-├── models/                     # Saved models and checkpoints
-│   ├── saved/                  # Final trained models
-│   ├── checkpoints/            # Training checkpoints
-│   └── exports/                # Exported models (TFLite, ONNX)
+│   ├── architecture_guide.md   # Repository guide and workflows
+│   ├── dataset.md              # Dataset description
+│   ├── methodology.md          # Evaluation protocol
+│   └── colab_training.md       # Google Colab setup guide
 │
-├── notebooks/                  # Jupyter notebooks (exploration only)
-├── reports/                    # Generated reports and figures
-│   ├── figures/                # Plots and visualizations
-│   └── metrics/                # Evaluation metrics
+├── experiments/                # Experiment logs and tracking
+│   ├── densenet121/
+│   └── resnet50v2/
+│
+├── models/                     # Saved models and checkpoints (gitignored)
+│   ├── checkpoints/
+│   ├── saved/
+│   └── exports/
+│
+├── notebooks/                  # Jupyter notebooks
+│   ├── exploration/            # Local exploration
+│   └── colab/                  # Google Colab notebooks
+│       └── 00_setup_and_dataset_audit.ipynb
+│
+├── reports/                    # Generated reports and figures (gitignored)
+│   ├── figures/
+│   ├── metrics/
+│   └── predictions/
+│
+├── scripts/                    # CLI entry points
+│   └── prepare_data.py         # Dataset audit and split pipeline
 │
 ├── src/                        # Source code
-│   ├── data/                   # Data loading and processing
+│   ├── data/                   # Data loading, manifest, audit, splitting
 │   ├── models/                 # Model architectures
 │   ├── training/               # Training pipelines
 │   ├── evaluation/             # Evaluation and metrics
-│   ├── visualization/          # Plotting and visual analysis
+│   ├── explainability/         # Grad-CAM and interpretability
 │   ├── callbacks/              # Custom training callbacks
-│   └── utils/                  # Shared utilities
+│   ├── visualization/          # Plotting utilities
+│   └── utils/                  # Shared utilities (config, seed, runtime)
 │
-├── tests/                      # Unit and integration tests
+├── tests/                      # Unit and structural tests
 ├── api/                        # Future backend API
 ├── mobile/                     # Future mobile application
 │
-├── configs/                    # Configuration files
 ├── requirements.txt            # Python dependencies
+├── requirements-colab.txt      # Additional Colab dependencies
 ├── pyproject.toml              # Project metadata and build config
 ├── LICENSE                     # MIT License
 └── .gitignore                  # Git exclusions
@@ -92,7 +123,7 @@ histology-ai-classification/
 
 ```bash
 # Clone the repository
-git clone https://github.com/<org>/histology-ai-classification.git
+git clone https://github.com/MyElhadri/histology-ai-classification.git
 cd histology-ai-classification
 
 # Create virtual environment
@@ -106,24 +137,53 @@ pip install -r requirements.txt
 
 ## Configuration
 
-Copy the example configuration and adjust for your environment:
+The project uses a layered configuration system:
 
 ```bash
+# Common parameters are in configs/common.yaml (shared)
+# Model-specific parameters are in configs/densenet121.yaml or configs/resnet50v2.yaml
+# For local overrides, copy the example:
 cp configs/config.example.yaml configs/config.yaml
 ```
 
 ## Usage
 
-> **Note:** This section will be updated as training pipelines are implemented.
+### Dataset Audit
+
+```bash
+python scripts/prepare_data.py \
+    --dataset-root data/raw/Human_Histopathological_H_E_Stained_Nuclei_Images \
+    --output-root .
+```
+
+This produces the dataset manifest, class mapping, shared test set, and DenseNet121 fold assignments.
+
+### Google Colab
+
+See `docs/colab_training.md` for detailed Colab setup instructions, or open `notebooks/colab/00_setup_and_dataset_audit.ipynb` directly in Colab.
+
+### Tests
+
+```bash
+pytest tests/ -v
+```
+
+## Training Environment
+
+Local development is performed on CPU because the development computer does not have a CUDA-compatible dedicated GPU and only provides an integrated GPU.
+
+DenseNet121 training and fine-tuning are performed on Google Colab using a GPU runtime.
+
+The source code is stored on GitHub. Google Drive is used for persistent storage of the dataset, checkpoints, saved models, metrics, and generated reports.
 
 ## Reproducibility
 
 This project follows strict reproducibility guidelines:
 
-- All random seeds are configurable via `configs/config.yaml`
-- Experiment parameters are logged in `experiments/`
-- Data processing pipelines are deterministic when seeded
-- Model checkpoints are versioned
+- **Seed:** 42 — set globally across Python, NumPy, and TensorFlow
+- **Splits:** Generated deterministically and saved as CSV manifests
+- **Test set:** Shared and locked — never used for hyperparameter selection
+- **Augmentations:** Applied online during training (not saved to disk)
 
 ## Technology Stack
 
@@ -131,11 +191,15 @@ This project follows strict reproducibility guidelines:
 |---|---|
 | Language | Python 3.11 |
 | Deep Learning | TensorFlow / Keras |
-| Image Processing | OpenCV |
+| Image Processing | OpenCV, Pillow |
 | Numerical | NumPy |
 | Data Handling | Pandas |
 | Visualization | Matplotlib |
 | ML Utilities | Scikit-learn |
+
+## Educational Disclaimer
+
+This application is intended exclusively for educational use during histology practical sessions. It is not a medical diagnostic device and must not be used for clinical decision-making.
 
 ## License
 
@@ -143,5 +207,5 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 ## Authors
 
-- **Yassine** — DenseNet121 Architecture
-- **Teammate** — ResNet50V2 Architecture
+- **Yassine** — DenseNet121 Architecture (5-fold stratified CV)
+- **Mabena** — ResNet50V2 Architecture (validation strategy: her choice)

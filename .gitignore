@@ -42,29 +42,41 @@ env/
 # ===========================
 # Data (Large Files)
 # ===========================
-data/raw/
-data/processed/
-data/augmented/
-data/external/
+data/raw/*
+data/processed/*
+data/augmented/*
+data/external/*
+
+# Keep README files inside data subdirs
 !data/**/README.md
+!data/**/.gitkeep
+
+# ===========================
+# Manifests — NOT excluded
+# ===========================
+# data/manifests/ is versioned (CSV + JSON, no sensitive data)
 
 # ===========================
 # Models (Large Files)
 # ===========================
-models/saved/*.h5
-models/saved/*.keras
-models/saved/*.pb
-models/saved/*.tflite
-models/saved/*.onnx
-models/checkpoints/
-models/exports/
+models/checkpoints/*
+models/saved/*
+models/exports/*
+*.keras
+*.h5
+*.tflite
+*.onnx
+
+# Keep README and .gitkeep in model subdirs
 !models/**/README.md
+!models/**/.gitkeep
 
 # ===========================
 # Experiment Logs
 # ===========================
 experiments/runs/
 experiments/mlruns/
+experiments/**/checkpoints/*
 
 # ===========================
 # Reports (Generated)
@@ -88,6 +100,12 @@ configs/config.yaml
 configs/config.local.yaml
 *.env
 .env
+kaggle.json
+
+# ===========================
+# Testing
+# ===========================
+.pytest_cache/
 
 # ===========================
 # OS Files
