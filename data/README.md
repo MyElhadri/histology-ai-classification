@@ -57,4 +57,4 @@ pre-computed and saved to disk. This avoids:
 | `test_manifest.csv` | Shared | 20% test set for both models |
 | `densenet121_folds.csv` | Yassine | 5-fold CV for DenseNet121 |
 
-Mabena is free to create her own validation split file for ResNet50V2.
+

@@ -1,75 +1,79 @@
 """DenseNet121 architecture for tissue classification.
 
-This module handles:
-- Building DenseNet121 with transfer learning (ImageNet weights)
-- Custom classification head for histology classes
-- Fine-tuning strategy (freeze/unfreeze layers)
-
-The implementation will use a two-phase training approach:
-  1. Train only the classification head (base frozen)
-  2. Fine-tune the full network with a low learning rate
-
-Author: Yassine
+Builds a DenseNet121 model with transfer learning (ImageNet weights)
+and a custom classification head.
 """
 
-from __future__ import annotations
+from typing import Tuple
 
-from typing import Any
+import tensorflow as tf
+from tensorflow.keras.applications import DenseNet121
+from tensorflow.keras.layers import Dense, Dropout, GlobalAveragePooling2D
+from tensorflow.keras.models import Model
 
 
 def build_densenet121(
-    num_classes: int,
-    input_shape: tuple[int, int, int] = (224, 224, 3),
-    weights: str = "imagenet",
-    dropout_rate: float = 0.30,
-    dense_units: int = 256,
-) -> Any:
-    """Build a DenseNet121 model with a custom classification head.
-
+    num_classes: int = 22,
+    input_shape: Tuple[int, int, int] = (224, 224, 3),
+    weights: str | None = "imagenet",
+    dropout_rate: float = 0.30
+) -> Model:
+    """Build a DenseNet121 model.
+    
     Args:
-        num_classes: Number of output classes (22 for this dataset).
-        input_shape: Input image dimensions ``(H, W, C)``.
-        weights: Pre-trained weights to load (``"imagenet"`` or ``None``).
+        num_classes: Number of output classes.
+        input_shape: Input image dimensions.
+        weights: Pre-trained weights to load ("imagenet" or None).
         dropout_rate: Dropout rate before the final dense layer.
-        dense_units: Number of units in the intermediate dense layer.
-
+        
     Returns:
-        A compiled Keras Model (will be implemented in the next task).
-
-    Raises:
-        NotImplementedError: Skeleton only — training task pending.
+        A Keras Model.
     """
-    raise NotImplementedError(
-        "DenseNet121 build will be implemented in the training task."
+    # Define input tensor
+    inputs = tf.keras.Input(shape=input_shape)
+    
+    # Preprocess inputs for DenseNet
+    x = tf.keras.applications.densenet.preprocess_input(inputs)
+    
+    # Load base model
+    base_model = DenseNet121(
+        include_top=False,
+        weights=weights,
+        input_tensor=x,
+        pooling=None
     )
+    
+    # Add classification head
+    x = base_model.output
+    x = GlobalAveragePooling2D()(x)
+    
+    if dropout_rate > 0:
+        x = Dropout(dropout_rate)(x)
+        
+    outputs = Dense(num_classes, activation="softmax", dtype="float32")(x)
+    
+    model = Model(inputs=base_model.input, outputs=outputs, name="densenet121")
+    return model
 
 
-def freeze_base(model: Any) -> None:
-    """Freeze the DenseNet121 base layers for head-only training.
-
+def set_trainable_layers(model: Model, trainable: bool = False) -> None:
+    """Freeze or unfreeze the base model layers.
+    
     Args:
-        model: The Keras model built by :func:`build_densenet121`.
-
-    Raises:
-        NotImplementedError: Skeleton only.
+        model: The Keras model.
+        trainable: True to unfreeze the base, False to freeze it (keeping only the head trainable).
     """
-    raise NotImplementedError("Will be implemented in the training task.")
-
-
-def unfreeze_for_fine_tuning(
-    model: Any,
-    learning_rate: float = 1e-5,
-) -> Any:
-    """Unfreeze the base and recompile with a lower learning rate.
-
-    Args:
-        model: The Keras model after head training.
-        learning_rate: Learning rate for fine-tuning phase.
-
-    Returns:
-        Recompiled model ready for fine-tuning.
-
-    Raises:
-        NotImplementedError: Skeleton only.
-    """
-    raise NotImplementedError("Will be implemented in the training task.")
+    # Find the base model (all layers except the head)
+    # The last few layers are GlobalAveragePooling, Dropout, Dense
+    # We want to freeze/unfreeze the DenseNet121 layers.
+    for layer in model.layers:
+        # Skip custom head layers based on their type
+        if isinstance(layer, (GlobalAveragePooling2D, Dropout, Dense)):
+            layer.trainable = True
+        else:
+            # BatchNormalization should generally remain frozen during fine-tuning
+            # to prevent destabilizing the weights.
+            if isinstance(layer, tf.keras.layers.BatchNormalization):
+                layer.trainable = False
+            else:
+                layer.trainable = trainable

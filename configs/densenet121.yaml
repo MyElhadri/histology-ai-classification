@@ -1,19 +1,25 @@
-# ============================================================
-# DenseNet121 Configuration — Yassine
-# ============================================================
-# This configuration extends configs/common.yaml with
-# DenseNet121-specific training parameters.
-#
-# Validation strategy: 5-fold stratified cross-validation
-# on the development set (80% of data).
-# ============================================================
+project:
+  name: histology-ai-classification
+  seed: 42
+
+data:
+  dataset_root: data/raw/Human_Histopathological_H_E_Stained_Nuclei_Images
+  manifest_path: data/manifests/dataset_manifest.csv
+  folds_path: data/manifests/densenet121_folds.csv
+  image_size: [224, 224]
+  num_channels: 3
+  num_classes: 22
+
+validation:
+  strategy: stratified_k_fold
+  num_folds: 5
+  shuffle: true
+  random_seed: 42
 
 model:
   architecture: DenseNet121
   weights: imagenet
-  input_shape: [224, 224, 3]
   dropout_rate: 0.30
-  dense_units: 256
 
 training:
   environment: google_colab
@@ -22,12 +28,3 @@ training:
   fine_tuning_epochs: 40
   head_learning_rate: 0.001
   fine_tuning_learning_rate: 0.00001
-  optimizer: adamw
-  early_stopping_patience: 8
-  reduce_lr_patience: 3
-  resume_from_checkpoint: true
-
-validation:
-  strategy: stratified_kfold
-  num_folds: 5
-  folds_manifest_path: data/manifests/densenet121_folds.csv

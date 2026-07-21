@@ -1,122 +1,32 @@
-# ===========================
+# Data
+data/raw/*
+!data/raw/README.md
+
+# Models and Reports
+models/densenet121/checkpoints/*
+models/densenet121/saved/*
+reports/densenet121/*
+
+# Keras / TF artifacts
+*.keras
+*.h5
+
+# Secrets
+kaggle.json
+.env
+
 # Python
-# ===========================
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-*.egg
-*.egg-info/
-dist/
-build/
-eggs/
-*.manifest
-*.spec
+*.pyc
+.ipynb_checkpoints/
+.pytest_cache/
 
-# ===========================
-# Virtual Environments
-# ===========================
-.venv/
-venv/
-ENV/
-env/
-
-# ===========================
-# IDE & Editors
-# ===========================
+# IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
-.project
-.settings/
-.classpath
 
-# ===========================
-# Jupyter Notebooks
-# ===========================
-.ipynb_checkpoints/
-*.ipynb_metadata/
-
-# ===========================
-# Data (Large Files)
-# ===========================
-data/raw/*
-data/processed/*
-data/augmented/*
-data/external/*
-
-# Keep README files inside data subdirs
-!data/**/README.md
-!data/**/.gitkeep
-
-# ===========================
-# Manifests — NOT excluded
-# ===========================
-# data/manifests/ is versioned (CSV + JSON, no sensitive data)
-
-# ===========================
-# Models (Large Files)
-# ===========================
-models/checkpoints/*
-models/saved/*
-models/exports/*
-*.keras
-*.h5
-*.tflite
-*.onnx
-
-# Keep README and .gitkeep in model subdirs
-!models/**/README.md
-!models/**/.gitkeep
-
-# ===========================
-# Experiment Logs
-# ===========================
-experiments/runs/
-experiments/mlruns/
-experiments/**/checkpoints/*
-
-# ===========================
-# Reports (Generated)
-# ===========================
-reports/figures/*.png
-reports/figures/*.jpg
-reports/figures/*.svg
-reports/metrics/*.json
-reports/metrics/*.csv
-
-# ===========================
-# TensorBoard
-# ===========================
-logs/
-tensorboard_logs/
-
-# ===========================
-# Configuration (Secrets)
-# ===========================
-configs/config.yaml
-configs/config.local.yaml
-*.env
-.env
-kaggle.json
-
-# ===========================
-# Testing
-# ===========================
-.pytest_cache/
-
-# ===========================
-# OS Files
-# ===========================
+# OS
 .DS_Store
 Thumbs.db
-desktop.ini
-
-# ===========================
-# Distribution & Packaging
-# ===========================
-*.tar.gz
-*.zip
-*.whl
