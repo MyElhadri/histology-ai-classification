@@ -1,0 +1,104 @@
+# ===========================
+# Python
+# ===========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+*.manifest
+*.spec
+
+# ===========================
+# Virtual Environments
+# ===========================
+.venv/
+venv/
+ENV/
+env/
+
+# ===========================
+# IDE & Editors
+# ===========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
+
+# ===========================
+# Jupyter Notebooks
+# ===========================
+.ipynb_checkpoints/
+*.ipynb_metadata/
+
+# ===========================
+# Data (Large Files)
+# ===========================
+data/raw/
+data/processed/
+data/augmented/
+data/external/
+!data/**/README.md
+
+# ===========================
+# Models (Large Files)
+# ===========================
+models/saved/*.h5
+models/saved/*.keras
+models/saved/*.pb
+models/saved/*.tflite
+models/saved/*.onnx
+models/checkpoints/
+models/exports/
+!models/**/README.md
+
+# ===========================
+# Experiment Logs
+# ===========================
+experiments/runs/
+experiments/mlruns/
+
+# ===========================
+# Reports (Generated)
+# ===========================
+reports/figures/*.png
+reports/figures/*.jpg
+reports/figures/*.svg
+reports/metrics/*.json
+reports/metrics/*.csv
+
+# ===========================
+# TensorBoard
+# ===========================
+logs/
+tensorboard_logs/
+
+# ===========================
+# Configuration (Secrets)
+# ===========================
+configs/config.yaml
+configs/config.local.yaml
+*.env
+.env
+
+# ===========================
+# OS Files
+# ===========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===========================
+# Distribution & Packaging
+# ===========================
+*.tar.gz
+*.zip
+*.whl
