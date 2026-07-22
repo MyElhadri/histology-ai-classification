@@ -2,62 +2,151 @@
 
 > AI-Powered Learning Assistant for Medical Students Studying Histology
 
-[![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
+[![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/downloads/)
 [![TensorFlow](https://img.shields.io/badge/TensorFlow-2.x-orange.svg)](https://www.tensorflow.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
-## Educational Goal
+## ⚠️ Disclaimer
 
-This project develops a deep learning system to classify human histopathological tissue types from H&E-stained microscope slides. It is designed as an educational tool to help medical students identify tissue types and learn their characteristics.
+This application is intended **exclusively** for educational use. It is **not** a medical diagnostic device.
 
-**⚠️ Disclaimer:** This application is intended *exclusively* for educational use. It is not a medical diagnostic device.
+---
 
-## Architecture & Models
+## Objective
 
-The repository is designed to be modular and scalable, allowing the integration of multiple deep learning architectures for histology classification. The training pipeline utilizes a **5-fold stratified cross-validation** strategy to ensure robust evaluation across the dataset.
+A deep learning system to classify 22 human histopathological tissue types from H&E-stained microscope slides. Designed as an educational tool to help medical students identify tissue types.
 
-Key components of the architecture include:
-- **Data Pipeline:** Standardized manifest generation and cross-validation fold assignments.
-- **Model Training:** Automated workflows for training various architectures (e.g., DenseNet, ResNet).
-- **Evaluation:** Unified metrics computation (Accuracy, Macro F1, etc.) for fair model comparison.
+---
 
-## Training Environment
+## Current Status
 
-The models are configured to be trained on **Google Colab** using GPU runtimes to accelerate the deep learning processes. 
-Data, manifests, and model checkpoints are saved to **Google Drive** for persistence and collaboration.
+| Component | Status |
+|---|---|
+| Dataset (432 images, 22 classes) | ✅ Ready |
+| Class mapping (alphabetical, 0–21) | ✅ Ready |
+| Manifest (`original_22_dataset_manifest.csv`) | ✅ Ready |
+| 5-Fold CV manifest (`densenet121_folds.csv`) | ✅ Ready |
+| Data pipeline (`pipeline.py`) | ✅ Fixed |
+| DenseNet121 architecture | ✅ Ready |
+| Training orchestrator (5-fold) | ✅ Ready |
+| Evaluation metrics | ✅ Ready |
+| Google Colab notebooks | ✅ Ready |
+| Full training on Colab GPU | 🔜 Next step |
 
-## Repository Structure
+---
+
+## Project Structure
 
 ```
 histology-ai-classification/
-├── configs/             # YAML configuration files for models
+├── configs/             # YAML configuration files
+│   └── densenet121.yaml
 ├── data/
-│   ├── manifests/       # Generated CSV metadata and folds
-│   └── raw/             # Raw dataset (gitignored)
-├── notebooks/colab/     # Google Colab notebooks for execution
+│   ├── manifests/       # Shared metadata (versioned in Git)
+│   │   ├── class_mapping.json
+│   │   ├── original_22_dataset_manifest.csv
+│   │   └── densenet121_folds.csv
+│   └── raw/             # Raw images (gitignored)
+├── docs/
+│   └── project_guide.md # Full technical guide
+├── notebooks/colab/     # Google Colab execution notebooks
+│   ├── 01_dataset_preparation.ipynb
+│   └── 02_train_densenet121.ipynb
+├── scripts/
+│   └── create_original_22_class_dataset.py
 ├── src/
-│   ├── data/            # Dataset exploration, manifests, pipeline
-│   ├── evaluation/      # Metrics and scoring
-│   ├── models/          # Model architecture definitions
-│   └── training/        # 5-fold CV training loop orchestrators
-├── models/              # Saved model checkpoints
-├── reports/             # Generated metrics and summaries
-└── tests/               # Unit tests
+│   ├── data/            # EDA, manifest, folds, pipeline
+│   ├── evaluation/      # Accuracy, F1, confusion matrix
+│   ├── models/          # DenseNet121 architecture
+│   ├── training/        # 5-fold cross-validation loop
+│   └── utils/           # Config loader, seed, runtime
+├── reports/             # Generated metrics and figures
+├── models/              # Saved model checkpoints (gitignored)
+└── tests/               # Automated tests (pytest)
 ```
 
-## How to Run
+---
 
-1. Place the dataset in `data/raw/Human_Histopathological_H_E_Stained_Nuclei_Images`.
-2. Open the Colab notebooks in `notebooks/colab/`:
-   - `01_dataset_preparation.ipynb` to explore the data and generate cross-validation folds.
-   - Run the relevant model training notebook (e.g., `02_train_densenet121.ipynb`) to execute the training loop.
+## Team
+
+| Role | Person | Architecture | Validation Strategy |
+|---|---|---|---|
+| DenseNet121 developer | Yassine | DenseNet121 | Stratified 5-Fold CV |
+| Second architecture | Teammate | ResNet50V2 (or other) | Teammate's choice |
+
+---
+
+## Installation (Local)
+
+```bash
+# Create virtual environment
+python -m venv .venv
+.venv\Scripts\activate   # Windows
+# source .venv/bin/activate  # Linux/macOS
+
+pip install -r requirements.txt
+```
+
+---
+
+## Dataset Reconstruction
+
+The raw dataset is **not included in Git**. Obtain it from the official source:
+> **NuInsSeg** — https://doi.org/10.5281/zenodo.10518852
+
+Then reconstruct the 22-class subset:
+```bash
+python scripts/create_original_22_class_dataset.py \
+    --source-root "path/to/NuInsSeg" \
+    --destination-root "data/raw/nuinsseg_human_22_original"
+```
+
+---
+
+## Run Exploratory Data Analysis
+
+```bash
+python -m src.data.explore_dataset
+# or with explicit path:
+python -m src.data.explore_dataset --data-dir data/raw/nuinsseg_human_22_original
+```
+
+---
+
+## Create 5-Fold Manifest
+
+```bash
+python -m src.data.create_folds \
+    --manifest-path data/manifests/original_22_dataset_manifest.csv \
+    --output-path data/manifests/densenet121_folds.csv \
+    --num-folds 5 \
+    --seed 42
+```
+
+---
+
+## Run Tests
+
+```bash
+python -m pytest tests/ -v
+```
+
+---
+
+## Training on Google Colab
+
+1. Open `notebooks/colab/01_dataset_preparation.ipynb` to prepare data and folds.
+2. Open `notebooks/colab/02_train_densenet121.ipynb` to train DenseNet121.
+
+Both notebooks call `src/` for all logic — no duplicate code.
+
+---
 
 ## Future Enhancements
 
-The following features are planned for integration as the project evolves:
-- **Additional Architectures** for comparative analysis and benchmarking.
-- **Grad-CAM Interpretability** for visual explanations of model predictions.
-- **Ensemble Strategies** combining multiple architectures for improved robustness.
-- **REST API Backend** for serving predictions in real-time.
-- **Web Frontend** and **Mobile App** interfaces for end-user interaction.
+- Grad-CAM visual explanations
+- Ensemble (DenseNet121 + ResNet50V2)
+- REST API backend
+- Web / Mobile frontend

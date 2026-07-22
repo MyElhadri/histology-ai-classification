@@ -9,11 +9,11 @@ import logging
 from pathlib import Path
 
 import tensorflow as tf
-import yaml
 
 from src.data.pipeline import create_dataset
 from src.evaluation.evaluate import evaluate_model
 from src.models.densenet121 import build_densenet121, set_trainable_layers
+from src.utils.config import load_yaml
 from src.utils.seed import set_global_seed
 
 logger = logging.getLogger(__name__)
@@ -130,9 +130,7 @@ def run_cross_validation(config_path: Path | str, output_dir: Path | str) -> Non
         config_path: Path to densenet121.yaml.
         output_dir: Root directory for saving models and reports.
     """
-    with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
-        
+    config = load_yaml(config_path)
     set_global_seed(config["project"]["seed"])
     output_dir = Path(output_dir).resolve()
     
