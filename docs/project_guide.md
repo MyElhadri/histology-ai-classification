@@ -147,3 +147,15 @@ These files are tracked in Git and are meant to be used by **both team members**
 5. Choose your own validation strategy — it does **not** have to match DenseNet121's 5-fold CV.
 6. Save results in a separate subdirectory (e.g. `reports/resnet50v2/`).
 7. Never modify `configs/densenet121.yaml` or `src/models/densenet121.py`.
+
+---
+
+## 10. Class Imbalance Strategy
+
+The dataset is highly imbalanced (e.g., 9 `muscle` images vs 47 `oesophagus` images).
+
+- **Data Augmentation vs. Balancing:** Augmentation (flips, brightness) creates variations of existing images to prevent overfitting, but it does NOT change the ratio between classes.
+- **Why Class Weights?** We assign a higher penalty (weight) to errors made on minority classes. This forces the model to pay equal attention to all classes during training.
+- **Why Per-Fold?** Since each fold has a slightly different training set, the exact class counts change. Weights must be recalculated based *only* on the training images for that specific fold.
+- **Why No Oversampling Yet?** Oversampling duplicates minority class images. While effective, it increases training time and can cause overfitting. We start with class weights as a lighter, standard approach.
+- **Validation Remains Unchanged:** The validation set is never balanced or augmented. It must reflect the real, unmodified data distribution to provide an honest evaluation of the model.

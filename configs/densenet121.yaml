@@ -28,3 +28,5 @@ training:
   fine_tuning_epochs: 40
   head_learning_rate: 0.001
   fine_tuning_learning_rate: 0.00001
+  use_class_weights: true
+  class_weight_method: balanced
