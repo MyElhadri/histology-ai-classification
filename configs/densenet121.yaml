@@ -3,8 +3,8 @@ project:
   seed: 42
 
 data:
-  dataset_root: data/raw/Human_Histopathological_H_E_Stained_Nuclei_Images
-  manifest_path: data/manifests/dataset_manifest.csv
+  dataset_root: data/raw/nuinsseg_human_22_original
+  manifest_path: data/manifests/original_22_dataset_manifest.csv
   folds_path: data/manifests/densenet121_folds.csv
   image_size: [224, 224]
   num_channels: 3
