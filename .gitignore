@@ -1,32 +1,63 @@
-# Data
+# ======================
+# Raw Data (images)
+# ======================
 data/raw/*
 !data/raw/README.md
 
-# Models and Reports
-models/densenet121/checkpoints/*
-models/densenet121/saved/*
-reports/densenet121/*
-
-# Keras / TF artifacts
+# ======================
+# Models and Checkpoints
+# ======================
+models/checkpoints/*
+!models/checkpoints/README.md
+models/saved/*
+!models/saved/README.md
 *.keras
 *.h5
 
+# ======================
+# Large Reports
+# ======================
+reports/densenet121/*
+!reports/densenet121/.gitkeep
+
+# ======================
 # Secrets
+# ======================
 kaggle.json
 .env
+*.pem
+*.key
 
-# Python
+# ======================
+# Python Artifacts
+# ======================
 __pycache__/
 *.pyc
-.ipynb_checkpoints/
+*.pyo
 .pytest_cache/
 
+# ======================
+# Notebook Checkpoints
+# ======================
+.ipynb_checkpoints/
+
+# ======================
 # IDEs
+# ======================
 .vscode/
 .idea/
 *.swp
 *.swo
 
+# ======================
+# Virtual Environments
+# ======================
+.venv/
+venv/
+env/
+
+# ======================
 # OS
+# ======================
 .DS_Store
 Thumbs.db

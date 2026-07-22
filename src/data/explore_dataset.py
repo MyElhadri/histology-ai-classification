@@ -101,7 +101,7 @@ VALID_IMAGE_EXTENSIONS: set[str] = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".
 
 # Default path to the dataset, relative to the project root.
 # We use the actual subdirectory name from the Kaggle download.
-DEFAULT_DATA_DIR: str = "data/raw/Human_Histopathological_H_E_Stained_Nuclei_Images"
+DEFAULT_DATA_DIR: str = "data/raw/nuinsseg_human_22_original"
 
 # How many sample images to display per class in the grid visualization.
 SAMPLES_PER_CLASS: int = 3
@@ -932,7 +932,7 @@ def print_final_report(
         print("    Recommended next steps:")
         print("      1. Normalize pixel values (ImageNet mean/std or [0, 1])")
         print("      2. Apply data augmentation to improve generalization")
-        print("      3. Split into train/validation/test sets")
+        print("      3. Create a stratified 5-fold cross-validation manifest.")
     else:
         print(f"  ⚠ {len(issues)} issue(s) to address before training:")
         for i, issue in enumerate(issues, start=1):
