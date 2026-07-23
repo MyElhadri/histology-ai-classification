@@ -89,6 +89,55 @@ def data_augmentation(image: tf.Tensor, label: tf.Tensor) -> Tuple[tf.Tensor, tf
     return image, label
 
 
+class RichAugmentation:
+    """Rich Data Augmentation policy for Experience A."""
+    
+    def __init__(self, config: dict):
+        self.config = config
+        layers = []
+        if config.get("horizontal_flip") and config.get("vertical_flip"):
+            layers.append(tf.keras.layers.RandomFlip("horizontal_and_vertical"))
+        elif config.get("horizontal_flip"):
+            layers.append(tf.keras.layers.RandomFlip("horizontal"))
+        elif config.get("vertical_flip"):
+            layers.append(tf.keras.layers.RandomFlip("vertical"))
+            
+        if "rotation_factor" in config:
+            layers.append(tf.keras.layers.RandomRotation(config["rotation_factor"]))
+        if "zoom_factor" in config:
+            layers.append(tf.keras.layers.RandomZoom(config["zoom_factor"]))
+        if "contrast_factor" in config:
+            layers.append(tf.keras.layers.RandomContrast(config["contrast_factor"]))
+            
+        self.spatial_and_contrast = tf.keras.Sequential(layers) if layers else None
+        
+    def __call__(self, image: tf.Tensor, label: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+        if self.spatial_and_contrast is not None:
+            image = self.spatial_and_contrast(image, training=True)
+            
+        if "brightness_delta" in self.config:
+            max_delta = self.config["brightness_delta"] * 255.0
+            image = tf.image.random_brightness(image, max_delta=max_delta)
+            
+        if "saturation_lower" in self.config and "saturation_upper" in self.config:
+            image = tf.image.random_saturation(
+                image, 
+                lower=self.config["saturation_lower"], 
+                upper=self.config["saturation_upper"]
+            )
+            
+        if "gaussian_noise_stddev" in self.config:
+            stddev = self.config["gaussian_noise_stddev"] * 255.0
+            noise = tf.random.normal(shape=tf.shape(image), mean=0.0, stddev=stddev, dtype=tf.float32)
+            image = image + noise
+            
+        clip_min = self.config.get("clip_min", 0.0)
+        clip_max = self.config.get("clip_max", 255.0)
+        image = tf.clip_by_value(image, clip_min, clip_max)
+        
+        return image, label
+
+
 def create_dataset(
     manifest_path: Path | str,
     dataset_root: Path | str,
@@ -98,6 +147,7 @@ def create_dataset(
     image_size: Tuple[int, int] = (224, 224),
     num_classes: int = 22,
     project_root: Path = _PROJECT_ROOT,
+    augmentation_config: dict | None = None,
 ) -> tf.data.Dataset:
     """Create a tf.data.Dataset for a specific fold.
 
@@ -147,7 +197,11 @@ def create_dataset(
     )
 
     if is_training:
-        dataset = dataset.map(data_augmentation, num_parallel_calls=tf.data.AUTOTUNE)
+        if augmentation_config and augmentation_config.get("enabled") and augmentation_config.get("policy") == "rich":
+            aug_fn = RichAugmentation(augmentation_config)
+            dataset = dataset.map(aug_fn, num_parallel_calls=tf.data.AUTOTUNE)
+        else:
+            dataset = dataset.map(data_augmentation, num_parallel_calls=tf.data.AUTOTUNE)
 
     dataset = dataset.batch(batch_size)
     dataset = dataset.prefetch(tf.data.AUTOTUNE)

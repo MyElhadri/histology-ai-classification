@@ -145,7 +145,8 @@ def train_fold(config: dict, fold: int, output_dir: Path) -> dict:
         is_training=True,
         batch_size=config["training"]["batch_size"],
         image_size=tuple(config["data"]["image_size"]),
-        num_classes=config["data"]["num_classes"]
+        num_classes=config["data"]["num_classes"],
+        augmentation_config=config.get("augmentation")
     )
 
     val_dataset = create_dataset(

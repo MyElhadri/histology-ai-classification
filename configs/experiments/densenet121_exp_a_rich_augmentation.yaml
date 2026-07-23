@@ -1,0 +1,47 @@
+project:
+  name: histology-ai-classification
+  seed: 42
+
+data:
+  dataset_root: data/raw/nuinsseg_human_22_original
+  manifest_path: data/manifests/original_22_dataset_manifest.csv
+  folds_path: data/manifests/densenet121_folds.csv
+  image_size: [224, 224]
+  num_channels: 3
+  num_classes: 22
+
+validation:
+  strategy: stratified_k_fold
+  num_folds: 5
+  shuffle: true
+  random_seed: 42
+
+model:
+  architecture: DenseNet121
+  weights: imagenet
+  dropout_rate: 0.30
+
+training:
+  environment: google_colab
+  batch_size: 16
+  head_epochs: 10
+  fine_tuning_epochs: 40
+  head_learning_rate: 0.001
+  fine_tuning_learning_rate: 0.00001
+  use_class_weights: true
+  class_weight_method: balanced
+
+augmentation:
+  enabled: true
+  policy: rich
+  horizontal_flip: true
+  vertical_flip: true
+  rotation_factor: 0.04
+  zoom_factor: 0.10
+  brightness_delta: 0.05
+  contrast_factor: 0.10
+  saturation_lower: 0.90
+  saturation_upper: 1.10
+  gaussian_noise_stddev: 0.01
+  clip_min: 0.0
+  clip_max: 255.0
