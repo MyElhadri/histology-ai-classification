@@ -160,12 +160,31 @@ def train_fold(config: dict, fold: int, output_dir: Path) -> dict:
     )
 
     # 2. Build model
+    head_config = config.get("classifier_head", {"type": "baseline"})
     model = build_densenet121(
         num_classes=config["data"]["num_classes"],
         input_shape=tuple(config["data"]["image_size"]) + (3,),
         weights=config["model"]["weights"],
-        dropout_rate=config["model"]["dropout_rate"]
+        dropout_rate=config["model"]["dropout_rate"],
+        head_config=head_config
     )
+    
+    # 2b. Print requested configuration details
+    head_type = head_config.get("type", "baseline")
+    aug_policy = config.get("augmentation", {}).get("policy", "baseline") if config.get("augmentation", {}).get("enabled", False) else "baseline"
+    
+    logger.info(f"Classifier head: {head_type}")
+    if head_type == "article_inspired":
+        logger.info(f"Pooling: {head_config.get('pooling', 'global_average')}")
+        logger.info(f"Dense units: {head_config.get('dense_1_units', 512)} -> {head_config.get('dense_2_units', 128)} -> {config['data']['num_classes']}")
+        logger.info(f"Dropout: {head_config.get('dropout_rate', 0.30):.2f}")
+        logger.info(f"L2: {head_config.get('l2_strength', 0.01):.2f}")
+    else:
+        logger.info("Pooling: global_average")
+        logger.info(f"Dense units: {config['data']['num_classes']}")
+        logger.info(f"Dropout: {config['model']['dropout_rate']:.2f}")
+        
+    logger.info(f"Augmentation policy: {aug_policy}")
 
     fold_checkpoint_dir = output_dir / "models" / "densenet121" / "checkpoints" / f"fold_{fold}"
     fold_checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -173,6 +192,12 @@ def train_fold(config: dict, fold: int, output_dir: Path) -> dict:
     # 3. Phase 1: Train head only
     logger.info("Phase 1: Training head only (base frozen)")
     set_trainable_layers(model, trainable=False)
+    
+    total_params = model.count_params()
+    head_trainable_params = sum(tf.keras.backend.count_params(w) for w in model.trainable_weights)
+    
+    logger.info(f"Total params: {total_params}")
+    logger.info(f"Trainable params (head phase): {head_trainable_params}")
 
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=config["training"]["head_learning_rate"]),
@@ -190,6 +215,8 @@ def train_fold(config: dict, fold: int, output_dir: Path) -> dict:
     # 4. Phase 2: Fine-tuning
     logger.info("Phase 2: Fine-tuning full model")
     set_trainable_layers(model, trainable=True)
+    fine_tuning_trainable_params = sum(tf.keras.backend.count_params(w) for w in model.trainable_weights)
+    logger.info(f"Trainable params (fine-tuning phase): {fine_tuning_trainable_params}")
 
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=config["training"]["fine_tuning_learning_rate"]),

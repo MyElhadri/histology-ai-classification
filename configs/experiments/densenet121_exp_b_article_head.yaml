@@ -21,7 +21,16 @@ model:
   weights: imagenet
   dropout_rate: 0.30
   classifier_head:
-    type: baseline
+    type: article_inspired
+    pooling: global_average
+    dense_1_units: 512
+    dense_1_activation: elu
+    batch_normalization: true
+    dropout_rate: 0.30
+    dense_2_units: 128
+    dense_2_activation: elu
+    l2_strength: 0.01
+    output_activation: softmax
 
 training:
   environment: google_colab
@@ -32,3 +41,7 @@ training:
   fine_tuning_learning_rate: 0.00001
   use_class_weights: true
   class_weight_method: balanced
+
+augmentation:
+  enabled: true
+  policy: baseline
