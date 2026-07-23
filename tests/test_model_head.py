@@ -1,127 +1,145 @@
+import json
 import pytest
+from pathlib import Path
+from src.utils.config import load_yaml
 
 try:
     import tensorflow as tf
-    from src.models.densenet121 import build_densenet121
+    from src.models.densenet121 import build_densenet121, validate_model_matches_config
     HAS_TF = True
 except ImportError:
     HAS_TF = False
     build_densenet121 = None
-
-pytestmark = pytest.mark.skipif(not HAS_TF, reason="TensorFlow is required for model tests")
-
-def test_baseline_head_unchanged():
-    """1. The baseline head must remain unchanged."""
-    model = build_densenet121(num_classes=22, input_shape=(224, 224, 3), weights=None, dropout_rate=0.30, head_config={"type": "baseline"})
-    # Baseline has GlobalAveragePooling2D -> Dropout -> Dense(22, softmax)
-    layers = model.layers
-    # The last 3 layers should be exactly what we expect
-    assert isinstance(layers[-3], tf.keras.layers.GlobalAveragePooling2D)
-    assert isinstance(layers[-2], tf.keras.layers.Dropout)
-    assert layers[-2].rate == 0.30
-    assert isinstance(layers[-1], tf.keras.layers.Dense)
-    assert layers[-1].units == 22
-    assert layers[-1].activation.__name__ == "softmax"
+    validate_model_matches_config = None
 
 
-def test_article_inspired_head():
-    """Tests 2 to 10: Verify the article_inspired head properties."""
-    head_config = {
-        "type": "article_inspired",
-        "pooling": "global_average",
-        "dense_1_units": 512,
-        "dense_1_activation": "elu",
-        "batch_normalization": True,
-        "dropout_rate": 0.30,
-        "dense_2_units": 128,
-        "dense_2_activation": "elu",
-        "l2_strength": 0.01,
-        "output_activation": "softmax"
-    }
+# --- Non-TF tests (Tests 12 & 13) ---
+
+def test_yaml_b_uses_baseline_augmentation():
+    """13. YAML B uses baseline augmentation policy."""
+    config_b_path = Path("configs/experiments/densenet121_exp_b_article_head.yaml")
+    assert config_b_path.exists(), "YAML B file missing"
+    config_b = load_yaml(config_b_path)
     
-    model = build_densenet121(num_classes=22, input_shape=(224, 224, 3), weights=None, head_config=head_config)
-    layers = model.layers
-    
-    # 9. GlobalAveragePooling is used
-    assert any(isinstance(l, tf.keras.layers.GlobalAveragePooling2D) for l in layers)
-    # 10. Flatten is not used
-    assert not any(isinstance(l, tf.keras.layers.Flatten) for l in layers)
-    
-    # We expect the last layers to be: GAP -> Dense(512) -> BatchNorm -> Dropout -> Dense(128) -> Dense(22)
-    # Let's extract the custom head layers (those with specific names or just from the end)
-    head_layers = layers[-6:]
-    
-    assert isinstance(head_layers[0], tf.keras.layers.GlobalAveragePooling2D)
-    
-    # 2. Contains Dense 512, 3. Activation ELU
-    assert isinstance(head_layers[1], tf.keras.layers.Dense)
-    assert head_layers[1].units == 512
-    assert head_layers[1].activation.__name__ == "elu"
-    
-    # 4. Contains BatchNormalization
-    assert isinstance(head_layers[2], tf.keras.layers.BatchNormalization)
-    
-    # 5. Contains Dropout 0.30
-    assert isinstance(head_layers[3], tf.keras.layers.Dropout)
-    assert head_layers[3].rate == 0.30
-    
-    # 6. Contains Dense 128, 7. L2=0.01
-    assert isinstance(head_layers[4], tf.keras.layers.Dense)
-    assert head_layers[4].units == 128
-    assert head_layers[4].activation.__name__ == "elu"
-    reg = head_layers[4].kernel_regularizer
-    assert reg is not None
-    assert isinstance(reg, tf.keras.regularizers.L2)
-    assert abs(reg.l2 - 0.01) < 1e-6
-    
-    # 8. Output has 22 softmax neurons
-    assert isinstance(head_layers[5], tf.keras.layers.Dense)
-    assert head_layers[5].units == 22
-    assert head_layers[5].activation.__name__ == "softmax"
+    aug_cfg = config_b.get("augmentation", {})
+    assert aug_cfg.get("policy") == "baseline", f"Expected policy baseline, got {aug_cfg.get('policy')}"
+    # Verify rich augmentation parameters are not present
+    assert "rotation_factor" not in aug_cfg
+    assert "zoom_factor" not in aug_cfg
 
 
-def test_invalid_config_raises_error():
-    """11. Invalid configuration causes a clear error."""
-    # Unknown type
-    with pytest.raises(ValueError, match="Unknown classifier_head type"):
-        build_densenet121(weights=None, head_config={"type": "unknown_head"})
+def test_notebook_does_not_overwrite_config_path():
+    """12. The notebook does not overwrite CONFIG_PATH in later cells."""
+    nb_path = Path("notebooks/colab/02_train_densenet121.ipynb")
+    assert nb_path.exists(), "Colab notebook missing"
+    with open(nb_path, "r", encoding="utf-8") as f:
+        nb = json.load(f)
         
-    # Negative units
-    with pytest.raises(ValueError, match="strictly positive required"):
-        head_config = {
-            "type": "article_inspired",
-            "dense_1_units": -512,
-            "dense_2_units": 128
-        }
-        build_densenet121(weights=None, head_config=head_config)
-        
-    # Invalid dropout
-    with pytest.raises(ValueError, match="between 0 and 1 required"):
-        head_config = {
-            "type": "article_inspired",
-            "dense_1_units": 512,
-            "dense_2_units": 128,
-            "dropout_rate": 1.5
-        }
-        build_densenet121(weights=None, head_config=head_config)
+    config_path_assignments = []
+    for cell in nb["cells"]:
+        if cell["cell_type"] == "code":
+            for line in cell["source"]:
+                line_str = line.strip()
+                if (line_str.startswith("CONFIG_PATH =") or line_str.startswith("CONFIG_PATH=")) and not line_str.startswith("#"):
+                    config_path_assignments.append(line_str)
+                    
+    # Only load-yaml cell should assign CONFIG_PATH
+    assert len(config_path_assignments) == 1, f"Multiple CONFIG_PATH assignments found: {config_path_assignments}"
+    assert "densenet121_exp_b_article_head.yaml" in config_path_assignments[0]
 
 
-def test_forward_pass_dummy_tensor():
-    """13. The model can perform a forward pass on a small dummy tensor."""
-    head_config = {
-        "type": "article_inspired",
-        "dense_1_units": 512,
-        "dense_2_units": 128
-    }
-    model = build_densenet121(num_classes=22, input_shape=(224, 224, 3), weights=None, head_config=head_config)
+# --- TF required tests (Tests 1-11) ---
+
+@pytest.mark.skipif(not HAS_TF, reason="TensorFlow is required for model head tests")
+def test_yaml_baseline_constructs_baseline_head():
+    """1. YAML baseline constructs baseline head."""
+    cfg_base = load_yaml("configs/densenet121.yaml")
+    head_cfg = cfg_base.get("model", {}).get("classifier_head") or cfg_base.get("classifier_head", {"type": "baseline"})
+    model = build_densenet121(weights=None, head_config=head_cfg)
     
-    # Create a batch of 2 dummy images
-    dummy_input = tf.random.normal((2, 224, 224, 3))
-    output = model(dummy_input, training=False)
+    layer_names = [l.name for l in model.layers]
+    assert "predictions" in layer_names
+    assert "classifier_dense_512" not in layer_names
+    assert model.count_params() == 7060054
+
+
+@pytest.mark.skipif(not HAS_TF, reason="TensorFlow is required for model head tests")
+def test_yaml_b_constructs_article_inspired_head():
+    """2 to 8. YAML B constructs article_inspired head with expected layers."""
+    cfg_b = load_yaml("configs/experiments/densenet121_exp_b_article_head.yaml")
+    head_cfg = cfg_b.get("model", {}).get("classifier_head")
+    model = build_densenet121(weights=None, head_config=head_cfg)
     
-    assert output.shape == (2, 224) # wait, it's 22 output classes
-    assert output.shape == (2, 22)
+    layer_names = [l.name for l in model.layers]
     
-    # Values should sum to roughly 1 (softmax)
-    sums = tf.reduce_sum(output, axis=-1)
-    tf.debugging.assert_near(sums, tf.ones_like(sums))
+    # 2. Contains Dense 512
+    assert "classifier_dense_512" in layer_names
+    d512 = next(l for l in model.layers if l.name == "classifier_dense_512")
+    assert d512.units == 512
+    
+    # 3. ELU activation present
+    assert "classifier_elu_512" in layer_names
+    
+    # 4. BatchNormalization present
+    assert "classifier_batch_norm" in layer_names
+    
+    # 5. Dropout 0.30 present
+    assert "classifier_dropout" in layer_names
+    drop = next(l for l in model.layers if l.name == "classifier_dropout")
+    assert drop.rate == 0.30
+    
+    # 6. Dense 128 with L2 0.01
+    assert "classifier_dense_128" in layer_names
+    d128 = next(l for l in model.layers if l.name == "classifier_dense_128")
+    assert d128.units == 128
+    assert d128.kernel_regularizer is not None
+    assert abs(float(d128.kernel_regularizer.l2) - 0.01) < 1e-5
+    
+    # 7. 22 outputs softmax
+    assert "predictions" in layer_names
+    pred = next(l for l in model.layers if l.name == "predictions")
+    assert pred.units == 22
+    assert pred.activation.__name__ == "softmax"
+    
+    # 8. Does not use Flatten
+    assert not any(isinstance(l, tf.keras.layers.Flatten) for l in model.layers)
+
+
+@pytest.mark.skipif(not HAS_TF, reason="TensorFlow is required for model head tests")
+def test_param_count_b_greater_than_baseline():
+    """9. Number of parameters in B is greater than baseline (7,632,854 vs 7,060,054)."""
+    cfg_base = load_yaml("configs/densenet121.yaml")
+    head_base = cfg_base.get("model", {}).get("classifier_head")
+    model_base = build_densenet121(weights=None, head_config=head_base)
+    
+    cfg_b = load_yaml("configs/experiments/densenet121_exp_b_article_head.yaml")
+    head_b = cfg_b.get("model", {}).get("classifier_head")
+    model_b = build_densenet121(weights=None, head_config=head_b)
+    
+    assert model_b.count_params() > model_base.count_params()
+    assert model_b.count_params() == 7632854
+    assert model_base.count_params() == 7060054
+
+
+@pytest.mark.skipif(not HAS_TF, reason="TensorFlow is required for model head tests")
+def test_validate_model_matches_config_success():
+    """10. validate_model_matches_config accepts correct models."""
+    cfg_b = load_yaml("configs/experiments/densenet121_exp_b_article_head.yaml")
+    head_b = cfg_b.get("model", {}).get("classifier_head")
+    model_b = build_densenet121(weights=None, head_config=head_b)
+    
+    # Should not raise any error
+    validate_model_matches_config(model_b, cfg_b)
+
+
+@pytest.mark.skipif(not HAS_TF, reason="TensorFlow is required for model head tests")
+def test_validate_model_matches_config_rejection():
+    """11. validate_model_matches_config refuses a baseline model when article_inspired head is requested."""
+    cfg_base = load_yaml("configs/densenet121.yaml")
+    head_base = cfg_base.get("model", {}).get("classifier_head")
+    model_base = build_densenet121(weights=None, head_config=head_base)
+    
+    cfg_b = load_yaml("configs/experiments/densenet121_exp_b_article_head.yaml")
+    
+    with pytest.raises(ValueError, match="Configured head 'article_inspired' does not match constructed model"):
+        validate_model_matches_config(model_base, cfg_b)

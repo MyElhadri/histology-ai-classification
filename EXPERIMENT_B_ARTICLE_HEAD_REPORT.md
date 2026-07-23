@@ -3,58 +3,56 @@
 ## Objectif
 Implémenter et évaluer une tête de classification DenseNet121 inspirée de la littérature, sans perturber le comportement fondamental de la baseline et sans ajouter d'augmentation de données complexe, afin d'isoler l'impact exclusif de cette architecture sur les performances (accuracy et F1 score macro).
 
-## Hypothèse
-L'ajout de couches denses intermédiaires (512 puis 128 neurones), associées à une normalisation par lot (BatchNormalization) et à une régularisation L2 forte (0.01), ainsi qu'à une activation ELU plus fluide, permettra au réseau d'apprendre des représentations non-linéaires plus robustes et de réduire l'overfitting. Le Global Average Pooling (au lieu du Flatten souvent utilisé) réduira la dimensionnalité sans explosion du nombre de paramètres.
+## Cause Exacte du Bug & Diagnostic
+- **Cause du Bug** : Lors du chargement de la configuration dans `train.py` et le notebook Colab, la clé `classifier_head` était lue directement à la racine du dictionnaire `config.get("classifier_head")` au lieu de `config.get("model", {}).get("classifier_head")`. Or, dans les fichiers YAML, `classifier_head` est imbriqué sous la section `model:`.
+- **Preuve de l'ancien comportement** : La fonction `config.get("classifier_head")` renvoyait `None`, déclenchant le fallback par défaut `{"type": "baseline"}`. Par conséquent, l'entraînement s'exécutait avec la tête baseline et enregistrait dans `selected_folds_summary.json` :
+  - `head_type: baseline`
+  - `total_params: 7060054`
+- **Nombre de paramètres de l'ancien modèle** : `7 060 054` (modèle baseline avec 22 550 paramètres dans la tête).
 
-## Architecture Baseline
-- Extracteur de caractéristiques : DenseNet121 (sans fully connected layers, ImageNet).
-- Réduction spatiale : GlobalAveragePooling2D.
-- Régularisation : Dropout(0.30).
-- Classification finale : Dense(22, activation="softmax").
+## Architecture Réellement Construite Après Correction
+Après correction de l'extraction de configuration et ajout de la séparation explicite des fonctions d'activation ELU :
+- `global_average_pooling` (GlobalAveragePooling2D)
+- `classifier_dense_512` (Dense 512 unités)
+- `classifier_elu_512` (Activation ELU)
+- `classifier_batch_norm` (BatchNormalization)
+- `classifier_dropout` (Dropout 0.30)
+- `classifier_dense_128` (Dense 128 unités avec L2 = 0.01)
+- `classifier_elu_128` (Activation ELU)
+- `predictions` (Dense 22 unités, Softmax)
 
-## Architecture B (Article-Inspired)
-- Extracteur de caractéristiques : DenseNet121.
-- Réduction spatiale : GlobalAveragePooling2D.
-- **Intermédiaire 1** : Dense(512, activation="elu").
-- **Normalisation** : BatchNormalization.
-- **Régularisation 1** : Dropout(0.30).
-- **Intermédiaire 2** : Dense(128, activation="elu", kernel_regularizer=L2(0.01)).
-- Classification finale : Dense(22, activation="softmax").
+- **Nombre de paramètres après correction** : `7 632 854` (DenseNet121 base : 7 037 504 + Tête inspirée de l'article : 595 350).
 
-## Seule Variable Modifiée
-Seule la tête de classification a été modifiée par rapport à la baseline. Le taux d'apprentissage, la politique d'augmentation d'images (maintenue volontairement à "baseline"), les "class weights", l'optimiseur, ainsi que la gestion de l'entraînement et du fine-tuning restent constants.
+## Validation Runtime Obligatoire
+Une fonction `validate_model_matches_config(model, config)` a été intégrée dans `src/models/densenet121.py` et appelée systématiquement avant tout `model.fit()` :
+- Elle vérifie la présence explicite des couches `classifier_dense_512`, `classifier_batch_norm`, `classifier_dropout` (rate 0.30), `classifier_dense_128` (L2 = 0.01) et `predictions` (22 neurones softmax).
+- Elle garantit l'absence totale de couche `Flatten`.
+- En cas de non-correspondance entre le YAML et le modèle instancié, elle stoppe immédiatement l'exécution avec une erreur explicite.
 
-## Justification du GlobalAveragePooling
-Le `GlobalAveragePooling2D` produit un vecteur de dimension 1024 pour chaque image, indépendamment de la taille initiale. Contrairement au `Flatten`, qui concatène toutes les sorties spatiales (entraînant un nombre colossal de paramètres pour les couches denses suivantes et favorisant un sur-apprentissage massif), le pooling réduit les dimensions tout en conservant l'invariance spatiale globale des structures histologiques.
+## Tests Ajoutés
+Une suite de 13 tests de non-régression a été intégrée dans `tests/test_model_head.py` :
+1. Construction effective de la tête baseline depuis le YAML baseline.
+2. Construction effective de la tête article_inspired depuis le YAML B.
+3. Présence de la couche Dense 512.
+4. Présence de la couche BatchNormalization.
+5. Présence du Dropout 0.30.
+6. Présence de la couche Dense 128 avec régularisation L2 = 0.01.
+7. Présence de la couche de sortie avec 22 neurones et activation softmax.
+8. Absence totale de couche Flatten.
+9. Nombre de paramètres du modèle B supérieur à la baseline (7 632 854 vs 7 060 054).
+10. Acceptation des modèles valides par `validate_model_matches_config`.
+11. Rejet par `validate_model_matches_config` si un modèle baseline est construit alors que `article_inspired` est demandé.
+12. Immuabilité de `CONFIG_PATH` dans le notebook Colab.
+13. Utilisation de la politique d'augmentation `baseline` par le YAML B.
 
-## Paramètres Exacts
-Expérience B :
-- `pooling`: `global_average`
-- `dense_1_units`: 512
-- `dense_1_activation`: `elu`
-- `batch_normalization`: `true`
-- `dropout_rate`: 0.30
-- `dense_2_units`: 128
-- `dense_2_activation`: `elu`
-- `l2_strength`: 0.01
-- `output_activation`: `softmax`
-- Augmentation maintenue à `baseline`
-- Batch size : 16
-- Learning rates : 0.001 (head), 0.00001 (fine-tuning)
-
-## Tests Réalisés
-L'implémentation a fait l'objet de tests validant la sécurité et l'exactitude de l'architecture :
-1. **Intégrité de la Baseline** : Vérification que l'absence de paramètres spécifiques restaure strictement l'ancienne tête.
-2. **Structure de l'Architecture B** : Validation de la présence de `GlobalAveragePooling2D`, absence de `Flatten`, présence et configuration correcte des couches `Dense` (512, 128), `BatchNormalization`, `Dropout` et des fonctions `ELU`.
-3. **Robustesse de Configuration** : Les configurations erronées (taux de dropout impossibles, nombres de neurones négatifs, mauvais identifiant de tête) déclenchent immédiatement des erreurs explicites.
-4. **Viabilité (Forward Pass)** : Un batch de dimensions simulées (2, 224, 224, 3) a été injecté dans le modèle avec succès, et la sortie (2, 22) somme bien à 1, validant ainsi la logistique des tenseurs.
-
-## Procédure Colab
-Le notebook `02_train_densenet121.ipynb` a été configuré avec le path `configs/experiments/densenet121_exp_b_article_head.yaml` sous le mode `selected_folds` (folds 0 et 1). La mémoire TensorFlow et l'objet Keras Backend sont remis à zéro entre chaque fold. 
-Les sauvegardes de l'expérience (checkpoints, metrics, poids, récapitulatif avec totalisation du nombre de paramètres de l'architecture) sont stockées dans `/content/drive/MyDrive/histology-results/densenet121-exp-b-article-head-screening`, sans impact sur les résultats de la baseline ni sur l'expérience A.
-
-## Limites
-L'ajout de couches intermédiaires complexifie modérément le modèle (plus de paramètres dans la tête). Le BatchNormalization pourrait parfois se montrer instable sur de tout petits batch sizes en fine-tuning, mais un batch de 16 reste convenable.
-
-## Critères de Décision
-L'expérience B sera jugée fructueuse si la précision moyenne de validation ou le macro F1 score sur les 2 folds testés dépassent significativement ceux de la baseline entraînée dans les mêmes conditions exactes, tout en réduisant l'écart train/val (démontrant une diminution de l'overfitting).
+## Procédure Colab de Relance
+Pour exécuter l'entraînement corrigé sur Google Colab :
+1. Ouvrir le notebook `notebooks/colab/02_train_densenet121.ipynb`.
+2. S'assurer que les variables dans la cellule utilisateur / chargement YAML contiennent :
+   ```python
+   CONFIG_PATH = "configs/experiments/densenet121_exp_b_article_head.yaml"
+   RUN_MODE = "selected_folds"
+   SELECTED_FOLDS = [0, 1]
+   ```
+3. Exécuter l'ensemble des cellules du notebook. La cellule de pré-vérification validera l'architecture (7 632 854 paramètres) avant le lancement des folds.
+4. Les résultats seront enregistrés séparément dans `/content/drive/MyDrive/histology-results/densenet121-exp-b-article-head-screening`.

@@ -17,7 +17,7 @@ import tensorflow as tf
 
 from src.data.pipeline import create_dataset
 from src.evaluation.evaluate import evaluate_model
-from src.models.densenet121 import build_densenet121, set_trainable_layers
+from src.models.densenet121 import build_densenet121, set_trainable_layers, validate_model_matches_config
 from src.training.class_weights import compute_balanced_class_weights
 from src.utils.config import load_yaml
 from src.utils.seed import set_global_seed
@@ -160,7 +160,7 @@ def train_fold(config: dict, fold: int, output_dir: Path) -> dict:
     )
 
     # 2. Build model
-    head_config = config.get("classifier_head", {"type": "baseline"})
+    head_config = config.get("model", {}).get("classifier_head") or config.get("classifier_head", {"type": "baseline"})
     model = build_densenet121(
         num_classes=config["data"]["num_classes"],
         input_shape=tuple(config["data"]["image_size"]) + (3,),
@@ -169,22 +169,29 @@ def train_fold(config: dict, fold: int, output_dir: Path) -> dict:
         head_config=head_config
     )
     
-    # 2b. Print requested configuration details
-    head_type = head_config.get("type", "baseline")
-    aug_policy = config.get("augmentation", {}).get("policy", "baseline") if config.get("augmentation", {}).get("enabled", False) else "baseline"
+    # Validate model architecture matches config BEFORE training
+    validate_model_matches_config(model, config)
     
-    logger.info(f"Classifier head: {head_type}")
-    if head_type == "article_inspired":
-        logger.info(f"Pooling: {head_config.get('pooling', 'global_average')}")
-        logger.info(f"Dense units: {head_config.get('dense_1_units', 512)} -> {head_config.get('dense_2_units', 128)} -> {config['data']['num_classes']}")
-        logger.info(f"Dropout: {head_config.get('dropout_rate', 0.30):.2f}")
-        logger.info(f"L2: {head_config.get('l2_strength', 0.01):.2f}")
+    # Determine actual head type by inspecting layer names
+    layer_names = [l.name for l in model.layers]
+    if "classifier_dense_512" in layer_names and "classifier_dense_128" in layer_names:
+        actual_head_type = "article_inspired"
+    elif "predictions" in layer_names and "classifier_dense_512" not in layer_names:
+        actual_head_type = "baseline"
     else:
-        logger.info("Pooling: global_average")
-        logger.info(f"Dense units: {config['data']['num_classes']}")
-        logger.info(f"Dropout: {config['model']['dropout_rate']:.2f}")
-        
+        actual_head_type = "unknown"
+
+    req_head_type = head_config.get("type", "baseline")
+    aug_policy = config.get("augmentation", {}).get("policy", "baseline") if config.get("augmentation", {}).get("enabled", False) else "baseline"
+    total_params = model.count_params()
+    classifier_layers = [l.name for l in model.layers if l.name.startswith(("global_average_pooling", "classifier_", "predictions"))]
+
+    logger.info(f"Config path: {config.get('_config_path', 'N/A')}")
+    logger.info(f"Requested head type: {req_head_type}")
+    logger.info(f"Actual head type: {actual_head_type}")
     logger.info(f"Augmentation policy: {aug_policy}")
+    logger.info(f"Total parameters: {total_params}")
+    logger.info(f"Classifier layers: {classifier_layers}")
 
     fold_checkpoint_dir = output_dir / "models" / "densenet121" / "checkpoints" / f"fold_{fold}"
     fold_checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -193,11 +200,8 @@ def train_fold(config: dict, fold: int, output_dir: Path) -> dict:
     logger.info("Phase 1: Training head only (base frozen)")
     set_trainable_layers(model, trainable=False)
     
-    total_params = model.count_params()
     head_trainable_params = sum(tf.keras.backend.count_params(w) for w in model.trainable_weights)
-    
-    logger.info(f"Total params: {total_params}")
-    logger.info(f"Trainable params (head phase): {head_trainable_params}")
+    logger.info(f"Trainable parameters (head phase): {head_trainable_params}")
 
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=config["training"]["head_learning_rate"]),
