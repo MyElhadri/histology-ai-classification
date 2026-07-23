@@ -162,25 +162,124 @@ def validate_model_matches_config(model: Model, config: dict) -> None:
 
 
 def set_trainable_layers(model: Model, trainable: bool = False) -> None:
-    """Freeze or unfreeze the base model layers.
+    """Freeze or unfreeze the base model layers (baseline helper).
     
     Args:
         model: The Keras model.
         trainable: True to unfreeze the base, False to freeze it (keeping only the head trainable).
     """
-    # Find the base model (all layers except the head)
-    # The last few layers are GlobalAveragePooling, Dropout, Dense
-    # We want to freeze/unfreeze the DenseNet121 layers.
     for layer in model.layers:
-        # Skip custom head layers based on their type
         if isinstance(layer, (GlobalAveragePooling2D, Dropout, Dense, tf.keras.layers.BatchNormalization, tf.keras.layers.ELU, tf.keras.layers.Activation)) and layer.name.startswith(("global_average_pooling", "classifier_", "predictions")):
-            # Head layers are always trainable during phase 1, except maybe BatchNorm should be treated carefully
-            # Actually, standard head training unfreezes head layers.
             layer.trainable = True
         else:
-            # BatchNormalization should generally remain frozen during fine-tuning
-            # to prevent destabilizing the weights.
             if isinstance(layer, tf.keras.layers.BatchNormalization):
                 layer.trainable = False
             else:
                 layer.trainable = trainable
+
+
+def apply_fine_tuning_strategy(
+    model: Model,
+    strategy: str = "full",
+    trainable_layer_prefixes: list[str] | None = None,
+    keep_batch_normalization_frozen: bool = True,
+) -> None:
+    """Apply a fine-tuning unfreezing strategy to the model.
+
+    Args:
+        model: Keras model instance.
+        strategy: "full" or "last_dense_block".
+        trainable_layer_prefixes: List of layer name prefixes to unfreeze when strategy is "last_dense_block".
+        keep_batch_normalization_frozen: If True, keep all base BatchNormalization layers frozen.
+    """
+    if strategy not in ("full", "last_dense_block"):
+        raise ValueError(f"Unknown fine_tuning strategy: '{strategy}'. Supported strategies: 'full', 'last_dense_block'.")
+
+    if strategy == "last_dense_block":
+        if not trainable_layer_prefixes:
+            raise ValueError("trainable_layer_prefixes must not be empty for 'last_dense_block' strategy.")
+
+    for layer in model.layers:
+        is_head_layer = layer.name.startswith(("global_average_pooling", "classifier_", "predictions"))
+        
+        if is_head_layer:
+            layer.trainable = True
+        else:
+            is_batch_norm = isinstance(layer, tf.keras.layers.BatchNormalization)
+            
+            if keep_batch_normalization_frozen and is_batch_norm:
+                layer.trainable = False
+            elif strategy == "full":
+                layer.trainable = True
+            elif strategy == "last_dense_block":
+                is_target = any(layer.name.startswith(p) for p in trainable_layer_prefixes)
+                layer.trainable = is_target and not (keep_batch_normalization_frozen and is_batch_norm)
+
+
+def validate_fine_tuning_strategy(model: Model, config: dict) -> None:
+    """Validate that the actual trainable status of model layers matches the configured fine-tuning strategy.
+
+    Args:
+        model: Model instance after apply_fine_tuning_strategy.
+        config: Configuration dictionary.
+
+    Raises:
+        ValueError: If layer trainability does not match the configured strategy.
+    """
+    ft_config = config.get("fine_tuning", {})
+    req_strategy = ft_config.get("strategy", "full")
+    prefixes = ft_config.get("trainable_layer_prefixes", ["conv5_"])
+    keep_bn_frozen = ft_config.get("keep_batch_normalization_frozen", True)
+
+    head_config = config.get("model", {}).get("classifier_head") or config.get("classifier_head", {"type": "baseline"})
+    head_type = head_config.get("type", "baseline")
+
+    if req_strategy == "last_dense_block":
+        conv5_trainable = [
+            l.name for l in model.layers
+            if any(l.name.startswith(p) for p in prefixes)
+            and not isinstance(l, tf.keras.layers.BatchNormalization)
+            and l.trainable
+        ]
+        if not conv5_trainable:
+            raise ValueError("Configured fine-tuning strategy 'last_dense_block' does not match actual trainable layers: No conv5_* non-BatchNorm layers are trainable.")
+
+        forbidden_prefixes = ("conv1_", "conv2_", "conv3_", "conv4_")
+        forbidden_trainable = [
+            l.name for l in model.layers
+            if l.name.startswith(forbidden_prefixes) and l.trainable
+        ]
+        if forbidden_trainable:
+            raise ValueError(f"Configured fine-tuning strategy 'last_dense_block' does not match actual trainable layers: Found trainable layers in forbidden blocks: {forbidden_trainable[:5]}.")
+
+        if keep_bn_frozen:
+            backbone_bn_trainable = [
+                l.name for l in model.layers
+                if not l.name.startswith(("global_average_pooling", "classifier_", "predictions"))
+                and isinstance(l, tf.keras.layers.BatchNormalization)
+                and l.trainable
+            ]
+            if backbone_bn_trainable:
+                raise ValueError(f"Configured fine-tuning strategy 'last_dense_block' does not match actual trainable layers: Found trainable backbone BatchNormalization layers: {backbone_bn_trainable[:5]}.")
+
+        head_layers = [
+            l for l in model.layers
+            if l.name.startswith(("global_average_pooling", "classifier_", "predictions"))
+        ]
+        if not all(l.trainable for l in head_layers):
+            raise ValueError("Configured fine-tuning strategy 'last_dense_block' does not match actual trainable layers: Head layers are not trainable.")
+
+        if head_type == "baseline":
+            if any(l.name in ("classifier_dense_512", "classifier_batch_norm", "classifier_dense_128") for l in model.layers):
+                raise ValueError("Configured fine-tuning strategy 'last_dense_block' does not match actual trainable layers: Article-inspired head layers present when baseline requested.")
+
+    elif req_strategy == "full":
+        earlier_trainable = [
+            l.name for l in model.layers
+            if l.name.startswith(("conv1_", "conv2_", "conv3_", "conv4_"))
+            and not isinstance(l, tf.keras.layers.BatchNormalization)
+            and l.trainable
+        ]
+        if not earlier_trainable:
+            raise ValueError("Configured fine-tuning strategy 'full' does not match actual trainable layers: Earlier conv blocks are not trainable.")
+

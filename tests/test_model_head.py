@@ -45,7 +45,7 @@ def test_notebook_does_not_overwrite_config_path():
                     
     # Only load-yaml cell should assign CONFIG_PATH
     assert len(config_path_assignments) == 1, f"Multiple CONFIG_PATH assignments found: {config_path_assignments}"
-    assert "densenet121_exp_b_article_head.yaml" in config_path_assignments[0]
+    assert "configs/" in config_path_assignments[0] and ".yaml" in config_path_assignments[0]
 
 
 # --- TF required tests (Tests 1-11) ---

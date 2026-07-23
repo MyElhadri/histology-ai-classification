@@ -23,10 +23,6 @@ model:
   classifier_head:
     type: baseline
 
-fine_tuning:
-  strategy: full
-  keep_batch_normalization_frozen: true
-
 training:
   environment: google_colab
   batch_size: 16
@@ -36,3 +32,13 @@ training:
   fine_tuning_learning_rate: 0.00001
   use_class_weights: true
   class_weight_method: balanced
+
+augmentation:
+  enabled: true
+  policy: baseline
+
+fine_tuning:
+  strategy: last_dense_block
+  trainable_layer_prefixes:
+    - conv5_
+  keep_batch_normalization_frozen: true

@@ -17,7 +17,13 @@ import tensorflow as tf
 
 from src.data.pipeline import create_dataset
 from src.evaluation.evaluate import evaluate_model
-from src.models.densenet121 import build_densenet121, set_trainable_layers, validate_model_matches_config
+from src.models.densenet121 import (
+    apply_fine_tuning_strategy,
+    build_densenet121,
+    set_trainable_layers,
+    validate_fine_tuning_strategy,
+    validate_model_matches_config,
+)
 from src.training.class_weights import compute_balanced_class_weights
 from src.utils.config import load_yaml
 from src.utils.seed import set_global_seed
@@ -186,10 +192,14 @@ def train_fold(config: dict, fold: int, output_dir: Path) -> dict:
     total_params = model.count_params()
     classifier_layers = [l.name for l in model.layers if l.name.startswith(("global_average_pooling", "classifier_", "predictions"))]
 
+    ft_config = config.get("fine_tuning", {})
+    req_ft_strategy = ft_config.get("strategy", "full")
+
     logger.info(f"Config path: {config.get('_config_path', 'N/A')}")
     logger.info(f"Requested head type: {req_head_type}")
     logger.info(f"Actual head type: {actual_head_type}")
     logger.info(f"Augmentation policy: {aug_policy}")
+    logger.info(f"Fine-tuning strategy requested: {req_ft_strategy}")
     logger.info(f"Total parameters: {total_params}")
     logger.info(f"Classifier layers: {classifier_layers}")
 
@@ -200,6 +210,10 @@ def train_fold(config: dict, fold: int, output_dir: Path) -> dict:
     logger.info("Phase 1: Training head only (base frozen)")
     set_trainable_layers(model, trainable=False)
     
+    backbone_layers = [l for l in model.layers if not l.name.startswith(("global_average_pooling", "classifier_", "predictions"))]
+    trainable_backbone_head_phase = [l for l in backbone_layers if l.trainable]
+    logger.info(f"Backbone trainable layers during head phase: {len(trainable_backbone_head_phase)}")
+
     head_trainable_params = sum(tf.keras.backend.count_params(w) for w in model.trainable_weights)
     logger.info(f"Trainable parameters (head phase): {head_trainable_params}")
 
@@ -217,16 +231,62 @@ def train_fold(config: dict, fold: int, output_dir: Path) -> dict:
     )
 
     # 4. Phase 2: Fine-tuning
-    logger.info("Phase 2: Fine-tuning full model")
-    set_trainable_layers(model, trainable=True)
-    fine_tuning_trainable_params = sum(tf.keras.backend.count_params(w) for w in model.trainable_weights)
-    logger.info(f"Trainable params (fine-tuning phase): {fine_tuning_trainable_params}")
+    logger.info("Phase 2: Fine-tuning")
+    prefixes = ft_config.get("trainable_layer_prefixes", ["conv5_"])
+    keep_bn_frozen = ft_config.get("keep_batch_normalization_frozen", True)
+
+    apply_fine_tuning_strategy(
+        model,
+        strategy=req_ft_strategy,
+        trainable_layer_prefixes=prefixes,
+        keep_batch_normalization_frozen=keep_bn_frozen
+    )
 
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=config["training"]["fine_tuning_learning_rate"]),
         loss="categorical_crossentropy",
         metrics=["accuracy"]
     )
+
+    validate_fine_tuning_strategy(model, config)
+
+    earlier_trainable = [
+        l.name for l in model.layers
+        if l.name.startswith(("conv1_", "conv2_", "conv3_", "conv4_"))
+        and not isinstance(l, tf.keras.layers.BatchNormalization)
+        and l.trainable
+    ]
+    actual_ft_strategy = "full" if earlier_trainable else "last_dense_block"
+
+    trainable_backbone_layers = [
+        l for l in model.layers
+        if not l.name.startswith(("global_average_pooling", "classifier_", "predictions"))
+        and l.trainable
+    ]
+    frozen_backbone_layers = [
+        l for l in model.layers
+        if not l.name.startswith(("global_average_pooling", "classifier_", "predictions"))
+        and not l.trainable
+    ]
+
+    trainable_backbone_params = sum(
+        tf.keras.backend.count_params(w)
+        for l in trainable_backbone_layers for w in l.trainable_weights
+    )
+    total_trainable_params_ft = sum(tf.keras.backend.count_params(w) for w in model.trainable_weights)
+
+    first_trainable = trainable_backbone_layers[0].name if trainable_backbone_layers else "None"
+    last_trainable = trainable_backbone_layers[-1].name if trainable_backbone_layers else "None"
+
+    logger.info(f"Fine-tuning strategy actual: {actual_ft_strategy}")
+    logger.info(f"Keep BatchNormalization frozen: {keep_bn_frozen}")
+    logger.info(f"Trainable backbone layer count: {len(trainable_backbone_layers)}")
+    logger.info(f"Frozen backbone layer count: {len(frozen_backbone_layers)}")
+    logger.info(f"Trainable backbone parameters: {trainable_backbone_params}")
+    logger.info(f"Total trainable parameters: {total_trainable_params_ft}")
+    logger.info(f"First trainable backbone layer: {first_trainable}")
+    logger.info(f"Last trainable backbone layer: {last_trainable}")
+    logger.info(f"Trainable backbone layer names: {[l.name for l in trainable_backbone_layers]}")
 
     callbacks = [
         tf.keras.callbacks.ModelCheckpoint(
