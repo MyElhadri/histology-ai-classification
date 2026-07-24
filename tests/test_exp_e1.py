@@ -159,3 +159,47 @@ def test_crt_phase_trainable_parameters_is_2838():
     assert crt_params == 2838
 
 
+@pytest.mark.skipif(not HAS_TF, reason="TensorFlow required")
+def test_trainable_params_less_than_total_when_bn_frozen():
+    """10. Verify trainable_params < total_params when BatchNormalization layers are frozen."""
+    from src.models.densenet121 import build_densenet121, apply_fine_tuning_strategy
+    cfg = load_yaml("configs/experiments/densenet121_exp_e1_regularized_crt.yaml")
+    model = build_densenet121(
+        num_classes=22,
+        input_shape=(224, 224, 3),
+        weights=None,
+        head_config=cfg["model"]["classifier_head"]
+    )
+
+    apply_fine_tuning_strategy(model, strategy="full", keep_batch_normalization_frozen=True)
+
+    total_params = model.count_params()
+    trainable_params = sum(tf.keras.backend.count_params(w) for w in model.trainable_weights)
+    non_trainable_params = sum(tf.keras.backend.count_params(w) for w in model.non_trainable_weights)
+
+    assert trainable_params < total_params
+    assert trainable_params + non_trainable_params == total_params
+    assert non_trainable_params > 0
+
+
+@pytest.mark.skipif(not HAS_TF, reason="TensorFlow required")
+def test_trainable_params_uses_trainable_weights():
+    """11. Verify sum(count_params(w) for w in model.trainable_weights) is used for trainable parameters."""
+    from src.models.densenet121 import build_densenet121, apply_fine_tuning_strategy
+    cfg = load_yaml("configs/experiments/densenet121_exp_e1_regularized_crt.yaml")
+    model = build_densenet121(
+        num_classes=22,
+        input_shape=(224, 224, 3),
+        weights=None,
+        head_config=cfg["model"]["classifier_head"]
+    )
+
+    apply_fine_tuning_strategy(model, strategy="full", keep_batch_normalization_frozen=True)
+
+    calc_trainable = sum(tf.keras.backend.count_params(w) for w in model.trainable_weights)
+    # Total params includes non-trainable BN weights, so count_params() is larger
+    assert model.count_params() != calc_trainable
+    assert calc_trainable == sum(tf.keras.backend.count_params(w) for w in model.trainable_weights)
+
+
+

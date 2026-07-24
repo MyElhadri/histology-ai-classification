@@ -210,26 +210,51 @@ def _train_fold_e1(
 
     validate_fine_tuning_strategy(model, config)
 
-    trainable_backbone_layers = [
-        l for l in model.layers
-        if not l.name.startswith(("global_average_pooling", "classifier_", "predictions"))
-        and l.trainable
-    ]
-    trainable_backbone_params = sum(
-        tf.keras.backend.count_params(w)
-        for l in trainable_backbone_layers for w in l.trainable_weights
-    )
-    total_trainable_params_ft = sum(tf.keras.backend.count_params(w) for w in model.trainable_weights)
+    total_model_params = model.count_params()
+    trainable_total_params = sum(tf.keras.backend.count_params(w) for w in model.trainable_weights)
+    non_trainable_total_params = sum(tf.keras.backend.count_params(w) for w in model.non_trainable_weights)
+
+    backbone_layers = [l for l in model.layers if not l.name.startswith(("global_average_pooling", "classifier_", "predictions"))]
+    head_layers = [l for l in model.layers if l.name.startswith(("global_average_pooling", "classifier_", "predictions"))]
+
+    trainable_backbone_layers = [l for l in backbone_layers if l.trainable]
+    trainable_backbone_params = sum(tf.keras.backend.count_params(w) for l in trainable_backbone_layers for w in l.trainable_weights)
+
+    trainable_head_layers = [l for l in head_layers if l.trainable]
+    trainable_head_params = sum(tf.keras.backend.count_params(w) for l in trainable_head_layers for w in l.trainable_weights)
+
+    backbone_bn_layers = [l for l in backbone_layers if isinstance(l, tf.keras.layers.BatchNormalization)]
+    trainable_backbone_bn_layers = [l for l in backbone_bn_layers if l.trainable]
+    trainable_backbone_bn_names = [l.name for l in trainable_backbone_bn_layers]
 
     logger.info(f"Fine-tuning strategy: {req_ft_strategy}")
     logger.info("Sampling strategy: natural")
     logger.info("Class weights enabled: false")
     logger.info(f"Label smoothing: {label_smoothing}")
     logger.info(f"Keep backbone BatchNormalization frozen: {keep_bn_frozen}")
+    logger.info(f"Total model parameters: {total_model_params}")
+    logger.info(f"Trainable model parameters: {trainable_total_params}")
+    logger.info(f"Non-trainable model parameters: {non_trainable_total_params}")
     logger.info(f"Trainable backbone layers: {len(trainable_backbone_layers)}")
     logger.info(f"Trainable backbone parameters: {trainable_backbone_params}")
-    logger.info(f"Total trainable parameters: {total_trainable_params_ft}")
+    logger.info(f"Trainable head parameters: {trainable_head_params}")
+    logger.info(f"Total backbone BatchNormalization count: {len(backbone_bn_layers)}")
+    logger.info(f"Trainable backbone BatchNormalization count: {len(trainable_backbone_bn_layers)}")
+    if trainable_backbone_bn_names:
+        logger.info(f"Trainable backbone BatchNormalization names: {trainable_backbone_bn_names[:5]}")
     logger.info("Checkpoint monitor: val_ce_hard")
+
+    if keep_bn_frozen and len(trainable_backbone_bn_layers) > 0:
+        raise ValueError(
+            f"keep_batch_normalization_frozen=true is violated: "
+            f"Found {len(trainable_backbone_bn_layers)} trainable backbone BatchNormalization layers: {trainable_backbone_bn_names[:5]}."
+        )
+
+    if keep_bn_frozen and trainable_total_params >= total_model_params:
+        raise ValueError(
+            f"Expected trainable_params ({trainable_total_params}) < total_params ({total_model_params}) when BatchNormalization is frozen."
+        )
+
 
     rep_ckpt_path = fold_checkpoint_dir / "best_representation.weights.h5"
     phase2_callbacks = [

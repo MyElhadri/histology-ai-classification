@@ -13,18 +13,24 @@ L'objectif est double :
 1. **Régulariser les représentations** en éliminant les pénalités de fréquences excessives pendant le fine-tuning du backbone (aucun class weight, distribution naturelle, label smoothing = 0.05).
 2. **Rééquilibrer le classifieur (cRT)** en 3ème phase par un re-sampleur square-root modéré sur la couche de sortie uniquement, sans modifier les caractéristiques apprises par le backbone.
 
-## 3. Pipeline d'Entraînement en 3 Phases
+## 3. Pipeline d'Entraînement en 3 Phases & Décompte des Paramètres
 
-| Phase | Description | Sampling | Class Weights | Label Smoothing | Layers Entraînables | Params Entraînables |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Phase 1** | Head Training | Naturel | Désactivés | 0.05 | Tête `article_inspired` | **594 326** |
-| **Phase 2** | Fine-Tuning Représentation | Naturel | Désactivés | 0.05 | Full backbone (BN gelées) + Tête | **7 632 854** |
-| **Phase 3** | Classifier Retraining (cRT) | Square-Root | Désactivés | 0.05 | Couche `predictions` uniquement | **2 838** |
+| Phase | Description | Sampling | Class Weights | Label Smoothing | Layers Entraînables | Total Params | Trainable Params | Non-Trainable Params | Trainable Backbone Params |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Phase 1** | Head Training | Naturel | Désactivés | 0.05 | Tête `article_inspired` | 7 632 854 | **594 326** | 7 038 528 | 0 |
+| **Phase 2** | Fine-Tuning Représentation | Naturel | Désactivés | 0.05 | Full backbone (BN gelées) + Tête | 7 632 854 | **7 464 534** | **168 320** | **6 870 208** |
+| **Phase 3** | Classifier Retraining (cRT) | Square-Root | Désactivés | 0.05 | Couche `predictions` uniquement | 7 632 854 | **2 838** | 7 630 016 | 0 |
+
+> [!IMPORTANT]
+> **Audit du gel des BatchNormalization (Phase 2)** :
+> - Le backbone DenseNet121 contient **120 couches BatchNormalization** représentant **168 320 paramètres non-entraînables** lorsque `keep_batch_normalization_frozen=true`.
+> - Par conséquent, le nombre réel de paramètres entraînables en Phase 2 est strictement **7 464 534** ($7 632 854 - 168 320$), avec **0 couche BatchNormalization du backbone entraînable**.
+> - La validation au runtime vérifie dynamiquement à chaque exécution que `trainable_params < total_params` et lève une erreur bloquante si une couche BatchNormalization du backbone devient entraînable.
 
 ## 4. Différence entre `val_loss` et `val_ce_hard`
 - `val_loss` : Calculée avec `CategoricalCrossentropy(label_smoothing=0.05)` et inclut les pertes de régularisation L2 issues des couches de la tête.
 - `val_ce_hard` : Calculée de façon pure avec `CategoricalCrossentropy(label_smoothing=0.0)` sur des étiquettes dures (0/1), sans aucune pénalité L2 ni lissage.
-- Ainsi, `val_loss != val_ce_hard`. Les callbacks de l'Expérience E1 surveillent strictement `val_ce_hard` pour sélectionner les meilleurs poids.
+- Ainsi, `val_loss != val_ce_hard`. Les callbacks de l'Expérience E1 surveillent strictly `val_ce_hard` pour sélectionner les meilleurs poids.
 
 ## 5. Principe du Square-Root Sampling (Phase 3)
 - **Formule** : Chaque classe $c$ contenant $n_c$ images a une probabilité d'échantillonnage proportionnelle à $\sqrt{n_c}$ :
@@ -41,10 +47,11 @@ Avant la Phase 3 :
 - L'optimiseur Adam est instancié à neuf avec un learning rate de 0.0003.
 
 ## 7. Tests & Validation
-Une suite complète de tests validés avec `pytest` garantit 30 points clés, notamment :
+Une suite complète de tests validés avec `pytest` garantit 32 points clés, notamment :
 - Conformité YAML E1 (`article_inspired`, `rich`, `full`, `label_smoothing=0.05`).
 - Calcul exact du ratio square-root (38 vs 7 $\rightarrow$ 2.33).
-- Strictement 2838 paramètres entraînables en Phase 3.
+- Strictement **7 464 534** paramètres entraînables en Phase 2 et **2 838** en Phase 3.
+- Vérification au runtime que `trainable_params < total_params` lorsque les BN du backbone sont gelées.
 - Immuabilité des configurations des expériences Baseline, A, B, C et D.
 - Sérialisabilité native JSON de tous les types NumPy/TF.
 

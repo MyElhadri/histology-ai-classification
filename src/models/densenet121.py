@@ -283,3 +283,17 @@ def validate_fine_tuning_strategy(model: Model, config: dict) -> None:
         if not earlier_trainable:
             raise ValueError("Configured fine-tuning strategy 'full' does not match actual trainable layers: Earlier conv blocks are not trainable.")
 
+        if keep_bn_frozen:
+            backbone_bn_trainable = [
+                l.name for l in model.layers
+                if not l.name.startswith(("global_average_pooling", "classifier_", "predictions"))
+                and isinstance(l, tf.keras.layers.BatchNormalization)
+                and l.trainable
+            ]
+            if backbone_bn_trainable:
+                raise ValueError(
+                    f"Configured keep_batch_normalization_frozen=true is violated in 'full' strategy: "
+                    f"Found {len(backbone_bn_trainable)} trainable backbone BatchNormalization layers: {backbone_bn_trainable[:5]}."
+                )
+
+
