@@ -207,3 +207,77 @@ def create_dataset(
     dataset = dataset.prefetch(tf.data.AUTOTUNE)
 
     return dataset
+
+
+def create_square_root_dataset(
+    manifest_path: Path | str,
+    fold: int,
+    batch_size: int = 16,
+    image_size: Tuple[int, int] = (224, 224),
+    num_classes: int = 22,
+    project_root: Path = _PROJECT_ROOT,
+    augmentation_config: dict | None = None,
+    seed: int | None = 42,
+    frequency_power: float = -0.5,
+) -> Tuple[tf.data.Dataset, int, dict[int, float], dict[int, int]]:
+    """Create a square-root sampled tf.data.Dataset for Phase 3 (cRT).
+
+    Samples classes with probability proportional to n_c ** (1 + frequency_power),
+    where for frequency_power = -0.5, sampling probability is proportional to sqrt(n_c).
+    Total epoch size is constrained to the original number of training images N.
+
+    Returns:
+        (dataset, original_total_images, class_probabilities_dict, original_counts_dict)
+    """
+    df = pd.read_csv(manifest_path)
+    train_df = df[df["fold"] != fold]
+
+    class_counts = train_df["class_id"].value_counts().to_dict()
+    original_counts = {c: int(class_counts.get(c, 0)) for c in range(num_classes)}
+    N = len(train_df)
+
+    raw_weights = []
+    for c in range(num_classes):
+        cnt = original_counts[c]
+        if cnt > 0:
+            w = float(cnt ** (1.0 + frequency_power))
+        else:
+            w = 0.0
+        raw_weights.append(w)
+
+    total_w = sum(raw_weights)
+    class_probs = [w / total_w if total_w > 0 else 0.0 for w in raw_weights]
+    class_probs_dict = {c: class_probs[c] for c in range(num_classes)}
+
+    class_datasets = []
+    for c in range(num_classes):
+        c_df = train_df[train_df["class_id"] == c]
+        if len(c_df) > 0:
+            c_paths = [str(resolve_image_path(p, project_root)) for p in c_df["image_path"].values]
+            c_labels = tf.keras.utils.to_categorical([c] * len(c_paths), num_classes=num_classes)
+            ds_c = tf.data.Dataset.from_tensor_slices((c_paths, c_labels))
+            ds_c = ds_c.shuffle(buffer_size=len(c_paths), seed=seed)
+            ds_c = ds_c.repeat()
+        else:
+            dummy_path = [""]
+            dummy_label = tf.zeros((1, num_classes))
+            ds_c = tf.data.Dataset.from_tensor_slices((dummy_path, dummy_label)).repeat()
+        class_datasets.append(ds_c)
+
+    dataset = tf.data.Dataset.sample_from_datasets(class_datasets, weights=class_probs, seed=seed)
+    dataset = dataset.take(N)
+
+    dataset = dataset.map(
+        lambda x, y: parse_image(x, y, image_size),
+        num_parallel_calls=tf.data.AUTOTUNE
+    )
+
+    if augmentation_config and augmentation_config.get("enabled") and augmentation_config.get("policy") == "rich":
+        aug_fn = RichAugmentation(augmentation_config)
+        dataset = dataset.map(aug_fn, num_parallel_calls=tf.data.AUTOTUNE)
+
+    dataset = dataset.batch(batch_size)
+    dataset = dataset.prefetch(tf.data.AUTOTUNE)
+
+    return dataset, N, class_probs_dict, original_counts
+

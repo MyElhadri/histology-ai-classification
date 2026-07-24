@@ -1,0 +1,99 @@
+project:
+  name: histology-ai-classification
+  seed: 42
+
+experiment_name: densenet121_exp_e1_regularized_crt
+
+data:
+  dataset_root: data/raw/nuinsseg_human_22_original
+  manifest_path: data/manifests/original_22_dataset_manifest.csv
+  folds_path: data/manifests/densenet121_folds.csv
+  image_size: [224, 224]
+  num_channels: 3
+  num_classes: 22
+
+validation:
+  strategy: stratified_k_fold
+  num_folds: 5
+  shuffle: true
+  random_seed: 42
+
+model:
+  architecture: DenseNet121
+  weights: imagenet
+  dropout_rate: 0.30
+  classifier_head:
+    type: article_inspired
+    pooling: global_average
+    dense_1_units: 512
+    dense_1_activation: elu
+    batch_normalization: true
+    dropout_rate: 0.30
+    dense_2_units: 128
+    dense_2_activation: elu
+    l2_strength: 0.01
+    output_activation: softmax
+
+training:
+  environment: google_colab
+  batch_size: 16
+  head_epochs: 10
+  fine_tuning_epochs: 40
+  head_learning_rate: 0.001
+  fine_tuning_learning_rate: 0.00001
+  use_class_weights: false
+
+augmentation:
+  enabled: true
+  policy: rich
+  horizontal_flip: true
+  vertical_flip: true
+  rotation_factor: 0.04
+  zoom_factor: 0.10
+  brightness_delta: 0.05
+  contrast_factor: 0.10
+  saturation_lower: 0.90
+  saturation_upper: 1.10
+  gaussian_noise_stddev: 0.01
+  clip_min: 0.0
+  clip_max: 255.0
+
+fine_tuning:
+  strategy: full
+  keep_batch_normalization_frozen: true
+
+loss:
+  type: categorical_crossentropy
+  label_smoothing: 0.05
+
+sampling:
+  representation_phase:
+    strategy: natural
+    class_weights: false
+
+classifier_retraining:
+  enabled: true
+  reinitialize_predictions: true
+  trainable_layers:
+    - predictions
+  sampler:
+    strategy: square_root
+    frequency_power: -0.5
+    epoch_size_multiplier: 1.0
+    replacement: true
+  class_weights:
+    enabled: false
+  optimizer:
+    type: adam
+    learning_rate: 0.0003
+  epochs: 12
+  loss:
+    type: categorical_crossentropy
+    label_smoothing: 0.05
+  callbacks:
+    monitor: val_ce_hard
+    mode: min
+    early_stopping_patience: 3
+    reduce_lr_patience: 2
+    reduce_lr_factor: 0.2
+    min_learning_rate: 0.0000001

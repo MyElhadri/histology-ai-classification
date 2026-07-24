@@ -15,7 +15,7 @@ from pathlib import Path
 import pandas as pd
 import tensorflow as tf
 
-from src.data.pipeline import create_dataset
+from src.data.pipeline import create_dataset, create_square_root_dataset
 from src.evaluation.evaluate import evaluate_model
 from src.models.densenet121 import (
     apply_fine_tuning_strategy,
@@ -27,6 +27,7 @@ from src.models.densenet121 import (
 from src.training.class_weights import compute_balanced_class_weights
 from src.utils.config import load_yaml
 from src.utils.seed import set_global_seed
+from src.utils.serialization import convert_numpy_to_python
 
 logger = logging.getLogger(__name__)
 
@@ -127,23 +128,322 @@ def _compute_fold_class_weights(
 # Training
 # ---------------------------------------------------------------------------
 
-def train_fold(config: dict, fold: int, output_dir: Path) -> dict:
-    """Train a model for a specific fold and evaluate it.
+def _train_fold_e1(
+    config: dict,
+    fold: int,
+    output_dir: Path,
+    model: tf.keras.Model,
+    train_dataset: tf.data.Dataset,
+    val_dataset: tf.data.Dataset,
+    fold_checkpoint_dir: Path,
+    actual_head_type: str,
+    aug_policy: str,
+    req_head_type: str,
+    req_ft_strategy: str,
+    total_params: int,
+    seed: int,
+) -> dict:
+    """Specialized training path for E1 experiments (3-phase pipeline)."""
+    import numpy as np
+    num_classes = config["data"]["num_classes"]
+    manifest_path = config["data"]["folds_path"]
+
+    df = pd.read_csv(manifest_path)
+    train_df = df[df["fold"] != fold]
+    train_counts = train_df["class_id"].value_counts().to_dict()
+    all_train_counts = {c: int(train_counts.get(c, 0)) for c in range(num_classes)}
+    Q1 = float(np.percentile(list(all_train_counts.values()), 25))
+    minority_class_ids = [c for c, count in all_train_counts.items() if count <= Q1]
+    id_to_name = _load_class_mapping(config)
+    minority_class_names = [id_to_name.get(c, str(c)) for c in minority_class_ids]
+    minority_support = {c: all_train_counts[c] for c in minority_class_ids}
+
+    label_smoothing = config.get("loss", {}).get("label_smoothing", 0.05)
+    loss_fn = tf.keras.losses.CategoricalCrossentropy(label_smoothing=label_smoothing)
+    ce_hard_metric = tf.keras.metrics.CategoricalCrossentropy(name="ce_hard", label_smoothing=0.0)
+
+    # --- Phase 1: Head Training ---
+    set_trainable_layers(model, trainable=False)
+    head_trainable_params = sum(tf.keras.backend.count_params(w) for w in model.trainable_weights)
+
+    logger.info("Phase: head_training")
+    logger.info(f"Classifier head: {actual_head_type}")
+    logger.info(f"Augmentation train: {aug_policy}")
+    logger.info("Augmentation validation: disabled")
+    logger.info("Sampling strategy: natural")
+    logger.info("Class weights enabled: false")
+    logger.info(f"Label smoothing: {label_smoothing}")
+    logger.info("Backbone trainable layers: 0")
+    logger.info(f"Trainable parameters: {head_trainable_params}")
+
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=config["training"]["head_learning_rate"]),
+        loss=loss_fn,
+        metrics=["accuracy", ce_hard_metric],
+    )
+
+    model.fit(
+        train_dataset,
+        validation_data=val_dataset,
+        epochs=config["training"]["head_epochs"],
+        class_weight=None,
+    )
+
+    # --- Phase 2: Representation Fine-Tuning ---
+    logger.info("Phase: representation_fine_tuning")
+    ft_config = config.get("fine_tuning", {})
+    prefixes = ft_config.get("trainable_layer_prefixes", ["conv5_"])
+    keep_bn_frozen = ft_config.get("keep_batch_normalization_frozen", True)
+
+    apply_fine_tuning_strategy(
+        model,
+        strategy=req_ft_strategy,
+        trainable_layer_prefixes=prefixes,
+        keep_batch_normalization_frozen=keep_bn_frozen,
+    )
+
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=config["training"]["fine_tuning_learning_rate"]),
+        loss=loss_fn,
+        metrics=["accuracy", ce_hard_metric],
+    )
+
+    validate_fine_tuning_strategy(model, config)
+
+    trainable_backbone_layers = [
+        l for l in model.layers
+        if not l.name.startswith(("global_average_pooling", "classifier_", "predictions"))
+        and l.trainable
+    ]
+    trainable_backbone_params = sum(
+        tf.keras.backend.count_params(w)
+        for l in trainable_backbone_layers for w in l.trainable_weights
+    )
+    total_trainable_params_ft = sum(tf.keras.backend.count_params(w) for w in model.trainable_weights)
+
+    logger.info(f"Fine-tuning strategy: {req_ft_strategy}")
+    logger.info("Sampling strategy: natural")
+    logger.info("Class weights enabled: false")
+    logger.info(f"Label smoothing: {label_smoothing}")
+    logger.info(f"Keep backbone BatchNormalization frozen: {keep_bn_frozen}")
+    logger.info(f"Trainable backbone layers: {len(trainable_backbone_layers)}")
+    logger.info(f"Trainable backbone parameters: {trainable_backbone_params}")
+    logger.info(f"Total trainable parameters: {total_trainable_params_ft}")
+    logger.info("Checkpoint monitor: val_ce_hard")
+
+    rep_ckpt_path = fold_checkpoint_dir / "best_representation.weights.h5"
+    phase2_callbacks = [
+        tf.keras.callbacks.ModelCheckpoint(
+            filepath=str(rep_ckpt_path),
+            save_best_only=True,
+            save_weights_only=True,
+            monitor="val_ce_hard",
+            mode="min",
+        ),
+        tf.keras.callbacks.EarlyStopping(
+            monitor="val_ce_hard",
+            mode="min",
+            patience=5,
+            min_delta=0.002,
+            restore_best_weights=True,
+            start_from_epoch=5,
+        ),
+        tf.keras.callbacks.ReduceLROnPlateau(
+            monitor="val_ce_hard",
+            mode="min",
+            factor=0.2,
+            patience=2,
+            min_lr=1e-7,
+        ),
+    ]
+
+    model.fit(
+        train_dataset,
+        validation_data=val_dataset,
+        epochs=config["training"]["fine_tuning_epochs"],
+        callbacks=phase2_callbacks,
+        class_weight=None,
+    )
+
+    if rep_ckpt_path.is_file():
+        model.load_weights(str(rep_ckpt_path))
+
+    pre_crt_metrics = evaluate_model(
+        model,
+        val_dataset,
+        minority_class_ids=minority_class_ids,
+        num_classes=num_classes,
+    )
+    logger.info(
+        f"Pre-cRT Metrics — Accuracy: {pre_crt_metrics['accuracy']:.4f}, "
+        f"Macro F1: {pre_crt_metrics['macro_f1']:.4f}, "
+        f"val_ce_hard: {pre_crt_metrics['val_ce_hard']:.4f}"
+    )
+
+    # --- Phase 3: Classifier Retraining (cRT) ---
+    logger.info("Phase: classifier_retraining")
+    crt_config = config.get("classifier_retraining", {})
+
+    for layer in model.layers:
+        if layer.name == "predictions":
+            layer.trainable = True
+        else:
+            layer.trainable = False
+
+    pred_layer = next(l for l in model.layers if l.name == "predictions")
+    if hasattr(pred_layer, "kernel_initializer") and pred_layer.kernel is not None:
+        new_k = pred_layer.kernel_initializer(shape=pred_layer.kernel.shape, dtype=pred_layer.kernel.dtype)
+        pred_layer.kernel.assign(new_k)
+    if hasattr(pred_layer, "bias_initializer") and pred_layer.bias is not None:
+        new_b = pred_layer.bias_initializer(shape=pred_layer.bias.shape, dtype=pred_layer.bias.dtype)
+        pred_layer.bias.assign(new_b)
+
+    crt_trainable_params = sum(tf.keras.backend.count_params(w) for w in model.trainable_weights)
+    if crt_trainable_params != 2838:
+        raise ValueError(f"Expected 2838 trainable parameters during cRT, found {crt_trainable_params}")
+
+    crt_sampler_cfg = crt_config.get("sampler", {})
+    freq_power = crt_sampler_cfg.get("frequency_power", -0.5)
+    crt_train_ds, N_train, class_probs_dict, orig_counts_dict = create_square_root_dataset(
+        manifest_path=manifest_path,
+        fold=fold,
+        batch_size=config["training"]["batch_size"],
+        image_size=tuple(config["data"]["image_size"]),
+        num_classes=num_classes,
+        augmentation_config=config.get("augmentation"),
+        seed=seed,
+        frequency_power=freq_power,
+    )
+
+    crt_lr = crt_config.get("optimizer", {}).get("learning_rate", 0.0003)
+    crt_loss_smoothing = crt_config.get("loss", {}).get("label_smoothing", 0.05)
+    crt_loss_fn = tf.keras.losses.CategoricalCrossentropy(label_smoothing=crt_loss_smoothing)
+    crt_ce_metric = tf.keras.metrics.CategoricalCrossentropy(name="ce_hard", label_smoothing=0.0)
+
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=crt_lr),
+        loss=crt_loss_fn,
+        metrics=["accuracy", crt_ce_metric],
+    )
+
+    crt_ckpt_path = fold_checkpoint_dir / "best_crt.weights.h5"
+    crt_callbacks_cfg = crt_config.get("callbacks", {})
+    phase3_callbacks = [
+        tf.keras.callbacks.ModelCheckpoint(
+            filepath=str(crt_ckpt_path),
+            save_best_only=True,
+            save_weights_only=True,
+            monitor=crt_callbacks_cfg.get("monitor", "val_ce_hard"),
+            mode=crt_callbacks_cfg.get("mode", "min"),
+        ),
+        tf.keras.callbacks.EarlyStopping(
+            monitor=crt_callbacks_cfg.get("monitor", "val_ce_hard"),
+            mode=crt_callbacks_cfg.get("mode", "min"),
+            patience=crt_callbacks_cfg.get("early_stopping_patience", 3),
+            restore_best_weights=True,
+        ),
+        tf.keras.callbacks.ReduceLROnPlateau(
+            monitor=crt_callbacks_cfg.get("monitor", "val_ce_hard"),
+            mode=crt_callbacks_cfg.get("mode", "min"),
+            factor=crt_callbacks_cfg.get("reduce_lr_factor", 0.2),
+            patience=crt_callbacks_cfg.get("reduce_lr_patience", 2),
+            min_lr=crt_callbacks_cfg.get("min_learning_rate", 1e-7),
+        ),
+    ]
+
+    logger.info("Phase: classifier_retraining")
+    logger.info(f"Sampling strategy: {crt_sampler_cfg.get('strategy', 'square_root')}")
+    logger.info(f"Sampling frequency power: {freq_power}")
+    logger.info(f"Original train epoch size: {N_train}")
+    logger.info(f"cRT epoch size: {N_train}")
+    logger.info("Class weights enabled: false")
+    logger.info("Predictions reinitialized: true")
+    logger.info("Trainable layers: ['predictions']")
+    logger.info(f"Trainable parameters: {crt_trainable_params}")
+    logger.info("Validation sampling: natural")
+    logger.info("Validation augmentation: disabled")
+
+    model.fit(
+        crt_train_ds,
+        validation_data=val_dataset,
+        epochs=crt_config.get("epochs", 12),
+        callbacks=phase3_callbacks,
+        class_weight=None,
+    )
+
+    if crt_ckpt_path.is_file():
+        model.load_weights(str(crt_ckpt_path))
+
+    post_crt_metrics = evaluate_model(
+        model,
+        val_dataset,
+        minority_class_ids=minority_class_ids,
+        num_classes=num_classes,
+    )
+
+    crt_delta = {
+        "accuracy": float(post_crt_metrics["accuracy"] - pre_crt_metrics["accuracy"]),
+        "macro_f1": float(post_crt_metrics["macro_f1"] - pre_crt_metrics["macro_f1"]),
+        "weighted_f1": float(post_crt_metrics["weighted_f1"] - pre_crt_metrics["weighted_f1"]),
+        "minority_macro_f1": float(post_crt_metrics["minority_macro_f1"] - pre_crt_metrics["minority_macro_f1"]),
+        "minority_macro_recall": float(post_crt_metrics["minority_macro_recall"] - pre_crt_metrics["minority_macro_recall"]),
+        "zero_f1_class_count": int(post_crt_metrics["zero_f1_class_count"] - pre_crt_metrics["zero_f1_class_count"]),
+    }
+
+    metrics_dir = output_dir / "reports" / "densenet121" / "metrics"
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+
+    with open(metrics_dir / f"pre_crt_fold_{fold}.json", "w", encoding="utf-8") as f:
+        json.dump(convert_numpy_to_python(pre_crt_metrics), f, indent=2)
+
+    with open(metrics_dir / f"post_crt_fold_{fold}.json", "w", encoding="utf-8") as f:
+        json.dump(convert_numpy_to_python(post_crt_metrics), f, indent=2)
+
+    fold_summary = {
+        "fold": fold,
+        "pre_crt_metrics": convert_numpy_to_python(pre_crt_metrics),
+        "post_crt_metrics": convert_numpy_to_python(post_crt_metrics),
+        "crt_delta": convert_numpy_to_python(crt_delta),
+        "minority_class_ids": minority_class_ids,
+        "minority_class_names": minority_class_names,
+        "minority_threshold": Q1,
+        "minority_support_by_class": minority_support,
+        "class_probabilities": class_probs_dict,
+        "original_counts": orig_counts_dict,
+    }
+
+    with open(metrics_dir / f"fold_{fold}.json", "w", encoding="utf-8") as f:
+        json.dump(convert_numpy_to_python(post_crt_metrics), f, indent=2)
+
+    return post_crt_metrics
+
+def train_fold(
+    config: dict,
+    fold: int,
+    output_dir: Path | str,
+) -> dict:
+    """Train a single fold.
 
     Args:
         config: Configuration dictionary.
-        fold: Fold index to use as validation.
-        output_dir: Root directory for outputs.
+        fold: Fold index (0-4).
+        output_dir: Root output directory.
 
     Returns:
-        Dictionary of evaluation metrics.
+        Evaluation metrics dictionary.
     """
-    logger.info(f"=== Starting Training for Fold {fold} ===")
+    output_dir = Path(output_dir).resolve()
+    seed = config.get("_seed_override") if config.get("_seed_override") is not None else config["project"]["seed"]
+    set_global_seed(seed)
 
-    # 0. Compute class weights from the TRAINING set only
+    logger.info(f"\n==========================================")
+    logger.info(f"Starting Fold {fold} (seed={seed})")
+    logger.info(f"==========================================")
+
+    # 1. Compute class weights if enabled
     class_weight_dict, class_weight_info = _compute_fold_class_weights(config, fold)
 
-    # 1. Create datasets
+    # 2. Create datasets
     train_dataset = create_dataset(
         manifest_path=config["data"]["folds_path"],
         dataset_root=config["data"]["dataset_root"],
@@ -165,7 +465,7 @@ def train_fold(config: dict, fold: int, output_dir: Path) -> dict:
         num_classes=config["data"]["num_classes"]
     )
 
-    # 2. Build model
+    # 3. Build model
     head_config = config.get("model", {}).get("classifier_head") or config.get("classifier_head", {"type": "baseline"})
     model = build_densenet121(
         num_classes=config["data"]["num_classes"],
@@ -194,6 +494,31 @@ def train_fold(config: dict, fold: int, output_dir: Path) -> dict:
 
     ft_config = config.get("fine_tuning", {})
     req_ft_strategy = ft_config.get("strategy", "full")
+
+    fold_checkpoint_dir = output_dir / "models" / "densenet121" / "checkpoints" / f"fold_{fold}"
+    fold_checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    is_e1 = (
+        config.get("experiment_name") == "densenet121_exp_e1_regularized_crt"
+        or config.get("classifier_retraining", {}).get("enabled", False)
+    )
+
+    if is_e1:
+        return _train_fold_e1(
+            config=config,
+            fold=fold,
+            output_dir=output_dir,
+            model=model,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            fold_checkpoint_dir=fold_checkpoint_dir,
+            actual_head_type=actual_head_type,
+            aug_policy=aug_policy,
+            req_head_type=req_head_type,
+            req_ft_strategy=req_ft_strategy,
+            total_params=total_params,
+            seed=seed,
+        )
 
     logger.info(f"Config path: {config.get('_config_path', 'N/A')}")
     logger.info(f"Requested head type: {req_head_type}")
