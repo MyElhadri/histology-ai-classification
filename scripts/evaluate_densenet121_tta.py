@@ -39,23 +39,52 @@ def parse_args():
     parser.add_argument("--folds", type=int, nargs="+", default=[0, 1, 2, 3, 4], help="Folds to evaluate")
     return parser.parse_args()
 
-def find_checkpoint(results_dir: Path, fold: int) -> Path:
-    """Find exactly one checkpoint for the given fold."""
-    # Since checkpoints are usually named with fold in it, or just .keras/.h5
-    # Wait, the dir for fold might contain exactly one checkpoint or multiple.
-    # The instructions say: "Ne pas deviner le nom des checkpoints. Lever une erreur lorsqu'un checkpoint est absent ou ambigu."
-    # A results dir might contain folds in subfolders or directly.
-    # Let's search recursively for .keras or .h5 files that match the fold.
-    # Usually it's named something like *fold_0*.keras or similar.
-    all_checkpoints = list(results_dir.rglob("*.keras")) + list(results_dir.rglob("*.h5"))
-    fold_checkpoints = [ckpt for ckpt in all_checkpoints if f"fold_{fold}" in ckpt.name or f"fold{fold}" in ckpt.name]
-    
-    if len(fold_checkpoints) == 0:
-        raise FileNotFoundError(f"No checkpoint found for fold {fold} in {results_dir}")
-    elif len(fold_checkpoints) > 1:
-        raise ValueError(f"Ambiguous checkpoints found for fold {fold} in {results_dir}: {fold_checkpoints}")
-        
-    return fold_checkpoints[0]
+from pathlib import Path
+
+
+def find_checkpoint(results_dir, fold):
+    results_dir = Path(results_dir)
+
+    candidates = [
+        results_dir
+        / "models"
+        / "densenet121"
+        / "checkpoints"
+        / f"fold_{fold}"
+        / "best_model.keras",
+
+        results_dir
+        / "checkpoints"
+        / f"fold_{fold}"
+        / "best_model.keras",
+
+        results_dir
+        / f"fold_{fold}"
+        / "best_model.keras",
+    ]
+
+    matches = [path for path in candidates if path.is_file()]
+
+    # Recherche récursive de secours
+    if not matches:
+        matches = [
+            path
+            for path in results_dir.rglob("best_model.keras")
+            if path.parent.name == f"fold_{fold}"
+        ]
+
+    if not matches:
+        raise FileNotFoundError(
+            f"No checkpoint found for fold {fold} in {results_dir}"
+        )
+
+    if len(matches) > 1:
+        raise RuntimeError(
+            f"Multiple checkpoints found for fold {fold}: {matches}"
+        )
+
+    print(f"INFO: Fold {fold} checkpoint: {matches[0]}")
+    return matches[0]
 
 def make_tta_dataset(file_paths, batch_size=16, image_size=(224, 224)):
     def load_and_tta(file_path):
