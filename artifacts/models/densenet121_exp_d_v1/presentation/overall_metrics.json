@@ -1,0 +1,11 @@
+{
+    "accuracy_oof": 0.8842592592592593,
+    "macro_precision": 0.8483654797916794,
+    "macro_recall": 0.8395269540323017,
+    "macro_f1": 0.8409515533442434,
+    "weighted_precision": 0.8860839038803418,
+    "weighted_recall": 0.8842592592592593,
+    "weighted_f1": 0.8833965294298971,
+    "correct_predictions": 382,
+    "total_predictions": 432
+}

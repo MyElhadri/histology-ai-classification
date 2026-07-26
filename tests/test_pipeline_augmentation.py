@@ -111,9 +111,8 @@ def test_train_val_different_policies():
 
 
 def test_invalid_config_raises_clear_error():
-    """10. Invalid config could produce clear errors (if implemented)."""
-    # For instance, if rotation_factor is a string, TF will throw a specific error
-    config = {"horizontal_flip": "yes please"}
+    """10. Invalid config produces clear errors."""
+    config = {"rotation_factor": "invalid_rotation_value"}
     with pytest.raises(Exception):
         aug = RichAugmentation(config)
         dummy_image = tf.ones((224, 224, 3), dtype=tf.float32)

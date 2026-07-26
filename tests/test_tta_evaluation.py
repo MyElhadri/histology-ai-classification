@@ -97,7 +97,7 @@ def test_no_oof_duplication():
     # Le script vérifie statiquement assert len(oof_no_tta_df) == 432
     pass
 
-def test_no_model_fit(mocker):
+def test_no_model_fit():
     # Test 7: aucun appel à model.fit
     from src.models.densenet121 import build_densenet121
     model = build_densenet121(num_classes=2)
@@ -113,9 +113,15 @@ def test_missing_checkpoint_error(tmp_path):
         find_checkpoint(tmp_path, 0)
         
     # test ambiguous
-    (tmp_path / "fold_0_1.keras").touch()
-    (tmp_path / "fold_0_2.keras").touch()
-    with pytest.raises(ValueError, match="Ambiguous checkpoints"):
+    f1 = tmp_path / "models" / "densenet121" / "checkpoints" / "fold_0"
+    f1.mkdir(parents=True, exist_ok=True)
+    (f1 / "best_model.keras").touch()
+
+    f2 = tmp_path / "checkpoints" / "fold_0"
+    f2.mkdir(parents=True, exist_ok=True)
+    (f2 / "best_model.keras").touch()
+
+    with pytest.raises(RuntimeError, match="Multiple checkpoints found"):
         find_checkpoint(tmp_path, 0)
 
 def test_json_serialization(tmp_path):

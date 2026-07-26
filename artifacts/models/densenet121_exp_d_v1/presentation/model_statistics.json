@@ -1,0 +1,26 @@
+{
+    "model_name": "DenseNet121",
+    "input_shape": [
+        224,
+        224,
+        3
+    ],
+    "output_shape": [
+        null,
+        22
+    ],
+    "number_of_classes": 22,
+    "total_parameters": 7632854,
+    "trainable_parameters": 7464534,
+    "non_trainable_parameters": 168322,
+    "checkpoint_sizes": {
+        "fold_0": 91870200,
+        "fold_1": 91870182,
+        "fold_2": 91870200,
+        "fold_3": 91870182,
+        "fold_4": 91870182
+    },
+    "total_checkpoints_size_bytes": 459350946,
+    "tensorflow_version": "2.21.0",
+    "selected_inference": "without_tta"
+}

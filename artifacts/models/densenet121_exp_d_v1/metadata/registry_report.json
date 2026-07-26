@@ -1,0 +1,59 @@
+{
+    "source_folds_0_1": "C:\\Users\\Yassine\\Downloads\\densenet121-exp-d-rich-aug-article-head-screening-20260724T161533Z-1-001\\densenet121-exp-d-rich-aug-article-head-screening\\densenet121-exp-d-rich-aug-article-head-screening",
+    "source_folds_2_3_4": "C:\\Users\\Yassine\\Downloads\\densenet121-exp-d-confirmation-folds-2-3-4-20260724T161531Z-1-001\\densenet121-exp-d-confirmation-folds-2-3-4\\densenet121-exp-d-rich-aug-article-head-screening",
+    "destination": "C:\\Users\\Yassine\\Desktop\\stage\\histology-ai-classification\\artifacts\\models\\densenet121_exp_d_v1",
+    "copied_files": [
+        "checkpoints/fold_0/best_model.keras",
+        "checkpoints/fold_1/best_model.keras",
+        "checkpoints/fold_2/best_model.keras",
+        "checkpoints/fold_3/best_model.keras",
+        "checkpoints/fold_4/best_model.keras",
+        "evaluation/fold_0.json",
+        "evaluation/fold_0_class_weights.json",
+        "evaluation/fold_1.json",
+        "evaluation/fold_1_class_weights.json",
+        "evaluation/fold_2.json",
+        "evaluation/fold_2_class_weights.json",
+        "evaluation/fold_3.json",
+        "evaluation/fold_3_class_weights.json",
+        "evaluation/fold_4.json",
+        "evaluation/fold_4_class_weights.json",
+        "config/densenet121_exp_d_rich_aug_article_head.yaml",
+        "metadata/class_mapping.json",
+        "manifests/densenet121_folds.csv",
+        "metadata/model_metadata.json",
+        "README.md",
+        "metadata/checksums_sha256.txt",
+        "scripts/verify_registry.py"
+    ],
+    "skipped_identical_files": [],
+    "missing_optional_files": [
+        "tta_summary.json",
+        "oof_predictions_without_tta.csv",
+        "oof_predictions_with_tta.csv",
+        "confusion_matrix_without_tta.npy",
+        "confusion_matrix_with_tta.npy",
+        "fold_0_tta.json",
+        "fold_1_tta.json",
+        "fold_2_tta.json",
+        "fold_3_tta.json",
+        "fold_4_tta.json"
+    ],
+    "checkpoint_sizes": {
+        "fold_0": 91870200,
+        "fold_1": 91870182,
+        "fold_2": 91870200,
+        "fold_3": 91870182,
+        "fold_4": 91870182
+    },
+    "checksums_verified": true,
+    "models_loaded_successfully": true,
+    "output_shapes": {
+        "fold_0": [null, 22],
+        "fold_1": [null, 22],
+        "fold_2": [null, 22],
+        "fold_3": [null, 22],
+        "fold_4": [null, 22]
+    },
+    "final_status": "ready"
+}

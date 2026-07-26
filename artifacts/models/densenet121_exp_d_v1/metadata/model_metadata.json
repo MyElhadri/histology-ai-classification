@@ -1,0 +1,40 @@
+{
+    "registry_name": "densenet121_exp_d_v1",
+    "model_name": "DenseNet121",
+    "experiment": "D",
+    "version": "1.0",
+    "status": "finalized",
+    "selected_inference": "without_tta",
+    "input_shape": [
+        224,
+        224,
+        3
+    ],
+    "number_of_classes": 22,
+    "original_dataset_images": 432,
+    "dataset_protocol": "original images only",
+    "evaluation_images": "original images only",
+    "pre_generated_augmented_images": false,
+    "duplicated_images_for_evaluation": false,
+    "augmentation": "rich online augmentation during training only",
+    "cross_validation": "stratified 5-fold",
+    "fold_sizes": {
+        "fold_0": 87,
+        "fold_1": 87,
+        "fold_2": 86,
+        "fold_3": 86,
+        "fold_4": 86
+    },
+    "backbone_initialization": "ImageNet",
+    "head": "article_inspired",
+    "fine_tuning": "full",
+    "backbone_batch_normalization": "frozen",
+    "oof_correct_predictions": 382,
+    "oof_total_predictions": 432,
+    "oof_accuracy": 0.8843,
+    "mean_accuracy": 0.8841,
+    "mean_macro_f1": 0.828,
+    "mean_weighted_f1": 0.8794,
+    "tta_selected": false,
+    "notes": "The five fold checkpoints are preserved for ensemble learning. A separate model trained on all 432 images has not yet been created."
+}

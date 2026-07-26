@@ -1,0 +1,147 @@
+{
+    "bladder": {
+        "precision": 0.8,
+        "recall": 0.6666666666666666,
+        "f1-score": 0.7272727272727273,
+        "support": 12.0
+    },
+    "brain": {
+        "precision": 0.7692307692307693,
+        "recall": 0.8333333333333334,
+        "f1-score": 0.8,
+        "support": 12.0
+    },
+    "cardia": {
+        "precision": 0.8,
+        "recall": 0.6666666666666666,
+        "f1-score": 0.7272727272727273,
+        "support": 12.0
+    },
+    "cerebellum": {
+        "precision": 0.8333333333333334,
+        "recall": 0.8333333333333334,
+        "f1-score": 0.8333333333333334,
+        "support": 12.0
+    },
+    "epiglottis": {
+        "precision": 0.7692307692307693,
+        "recall": 0.9090909090909091,
+        "f1-score": 0.8333333333333334,
+        "support": 11.0
+    },
+    "gland": {
+        "precision": 0.8913043478260869,
+        "recall": 0.9318181818181818,
+        "f1-score": 0.9111111111111111,
+        "support": 44.0
+    },
+    "jejunum": {
+        "precision": 1.0,
+        "recall": 0.9,
+        "f1-score": 0.9473684210526315,
+        "support": 10.0
+    },
+    "kidney": {
+        "precision": 0.75,
+        "recall": 0.8181818181818182,
+        "f1-score": 0.782608695652174,
+        "support": 11.0
+    },
+    "liver": {
+        "precision": 0.975,
+        "recall": 0.975,
+        "f1-score": 0.975,
+        "support": 40.0
+    },
+    "lung": {
+        "precision": 0.6363636363636364,
+        "recall": 0.6363636363636364,
+        "f1-score": 0.6363636363636364,
+        "support": 11.0
+    },
+    "melanoma": {
+        "precision": 0.9090909090909091,
+        "recall": 0.8333333333333334,
+        "f1-score": 0.8695652173913043,
+        "support": 12.0
+    },
+    "muscle": {
+        "precision": 0.8333333333333334,
+        "recall": 0.5555555555555556,
+        "f1-score": 0.6666666666666666,
+        "support": 9.0
+    },
+    "oesophagus": {
+        "precision": 0.94,
+        "recall": 1.0,
+        "f1-score": 0.9690721649484536,
+        "support": 47.0
+    },
+    "pancreas": {
+        "precision": 0.9534883720930233,
+        "recall": 0.9318181818181818,
+        "f1-score": 0.9425287356321839,
+        "support": 44.0
+    },
+    "peritoneum": {
+        "precision": 0.7142857142857143,
+        "recall": 0.8333333333333334,
+        "f1-score": 0.7692307692307693,
+        "support": 12.0
+    },
+    "pylorus": {
+        "precision": 0.9090909090909091,
+        "recall": 0.8333333333333334,
+        "f1-score": 0.8695652173913043,
+        "support": 12.0
+    },
+    "rectum": {
+        "precision": 0.6153846153846154,
+        "recall": 0.6666666666666666,
+        "f1-score": 0.64,
+        "support": 12.0
+    },
+    "spleen": {
+        "precision": 0.96875,
+        "recall": 0.9117647058823529,
+        "f1-score": 0.9393939393939394,
+        "support": 34.0
+    },
+    "testis": {
+        "precision": 0.8333333333333334,
+        "recall": 0.8333333333333334,
+        "f1-score": 0.8333333333333334,
+        "support": 12.0
+    },
+    "tongue": {
+        "precision": 0.9230769230769231,
+        "recall": 0.9,
+        "f1-score": 0.9113924050632911,
+        "support": 40.0
+    },
+    "tonsile": {
+        "precision": 0.9230769230769231,
+        "recall": 1.0,
+        "f1-score": 0.96,
+        "support": 12.0
+    },
+    "umbilical-cord": {
+        "precision": 0.9166666666666666,
+        "recall": 1.0,
+        "f1-score": 0.9565217391304348,
+        "support": 11.0
+    },
+    "accuracy": 0.8842592592592593,
+    "macro avg": {
+        "precision": 0.8483654797916794,
+        "recall": 0.8395269540323017,
+        "f1-score": 0.8409515533442434,
+        "support": 432.0
+    },
+    "weighted avg": {
+        "precision": 0.8860839038803418,
+        "recall": 0.8842592592592593,
+        "f1-score": 0.8833965294298971,
+        "support": 432.0
+    }
+}

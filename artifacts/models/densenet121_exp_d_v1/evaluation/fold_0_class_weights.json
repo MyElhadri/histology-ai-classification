@@ -1,0 +1,121 @@
+{
+  "fold": 0,
+  "method": "balanced",
+  "enabled": true,
+  "train_images": 345,
+  "validation_images": 87,
+  "train_class_distribution": {
+    "bladder": 9,
+    "brain": 10,
+    "cardia": 9,
+    "cerebellum": 10,
+    "epiglottis": 9,
+    "gland": 35,
+    "jejunum": 8,
+    "kidney": 9,
+    "liver": 32,
+    "lung": 9,
+    "melanoma": 9,
+    "muscle": 7,
+    "oesophagus": 38,
+    "pancreas": 35,
+    "peritoneum": 10,
+    "pylorus": 9,
+    "rectum": 10,
+    "spleen": 27,
+    "testis": 10,
+    "tongue": 32,
+    "tonsile": 9,
+    "umbilical-cord": 9
+  },
+  "class_weights": {
+    "bladder": {
+      "class_id": 0,
+      "weight": 1.742424
+    },
+    "brain": {
+      "class_id": 1,
+      "weight": 1.568182
+    },
+    "cardia": {
+      "class_id": 2,
+      "weight": 1.742424
+    },
+    "cerebellum": {
+      "class_id": 3,
+      "weight": 1.568182
+    },
+    "epiglottis": {
+      "class_id": 4,
+      "weight": 1.742424
+    },
+    "gland": {
+      "class_id": 5,
+      "weight": 0.448052
+    },
+    "jejunum": {
+      "class_id": 6,
+      "weight": 1.960227
+    },
+    "kidney": {
+      "class_id": 7,
+      "weight": 1.742424
+    },
+    "liver": {
+      "class_id": 8,
+      "weight": 0.490057
+    },
+    "lung": {
+      "class_id": 9,
+      "weight": 1.742424
+    },
+    "melanoma": {
+      "class_id": 10,
+      "weight": 1.742424
+    },
+    "muscle": {
+      "class_id": 11,
+      "weight": 2.24026
+    },
+    "oesophagus": {
+      "class_id": 12,
+      "weight": 0.412679
+    },
+    "pancreas": {
+      "class_id": 13,
+      "weight": 0.448052
+    },
+    "peritoneum": {
+      "class_id": 14,
+      "weight": 1.568182
+    },
+    "pylorus": {
+      "class_id": 15,
+      "weight": 1.742424
+    },
+    "rectum": {
+      "class_id": 16,
+      "weight": 1.568182
+    },
+    "spleen": {
+      "class_id": 17,
+      "weight": 0.580808
+    },
+    "testis": {
+      "class_id": 18,
+      "weight": 1.568182
+    },
+    "tongue": {
+      "class_id": 19,
+      "weight": 0.490057
+    },
+    "tonsile": {
+      "class_id": 20,
+      "weight": 1.742424
+    },
+    "umbilical-cord": {
+      "class_id": 21,
+      "weight": 1.742424
+    }
+  }
+}

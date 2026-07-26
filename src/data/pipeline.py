@@ -183,7 +183,7 @@ def create_dataset(
 
     # Extract labels and one-hot encode
     labels = subset_df["class_id"].values
-    labels_onehot = tf.keras.utils.to_categorical(labels, num_classes=num_classes)
+    labels_onehot = tf.keras.utils.to_categorical(labels, num_classes=num_classes).astype("float32")
 
     # Build dataset
     dataset = tf.data.Dataset.from_tensor_slices((file_paths, labels_onehot))
