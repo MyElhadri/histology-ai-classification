@@ -278,6 +278,32 @@ def test_densenet121_exp_d_remains_unchanged() -> None:
         assert (densenet_ckpt_dir / "checkpoints").exists() or (densenet_ckpt_dir / "evaluation").exists()
 
 
+def test_script_execution_without_pythonpath(tmp_path: Path) -> None:
+    """Test that train_efficientnetv2b0.py runs with --help from outside repo without PYTHONPATH."""
+    import os
+    import subprocess
+    import sys
+
+    repo_root = Path(__file__).resolve().parents[1]
+    script_path = repo_root / "scripts" / "train_efficientnetv2b0.py"
+
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+
+    res = subprocess.run(
+        [sys.executable, str(script_path), "--help"],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        env=env,
+    )
+
+    assert res.returncode == 0, f"Script failed with exit code {res.returncode}. Output:\n{res.stderr}"
+    assert "ModuleNotFoundError" not in res.stderr
+    assert "ModuleNotFoundError" not in res.stdout
+    assert "Train EfficientNetV2B0" in res.stdout or "--help" in res.stdout
+
+
 @pytest.mark.skip(reason="Smoke test downloading ImageNet weights - do not run automatically in standard suite")
 def test_imagenet_smoke_test(exp_a_config: dict[str, Any]) -> None:
     """Smoke test for instantiating EfficientNetV2B0 with ImageNet weights."""

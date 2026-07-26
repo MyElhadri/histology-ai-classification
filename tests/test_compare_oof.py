@@ -72,3 +72,29 @@ def test_analyze_complementarity(tmp_path: Path) -> None:
     assert results["complementarity_breakdown"]["efficientnet_only_correct"] == 0
     assert results["complementarity_breakdown"]["agreement_rate"] == 0.5
     assert results["simple_ensemble_50_50"]["accuracy"] == 1.0  # DenseNet 0.80 prob dominates EffNet 0.05 prob on errors
+
+
+def test_compare_script_execution_without_pythonpath(tmp_path: Path) -> None:
+    """Test that compare_densenet_efficientnet_oof.py runs with --help from outside repo without PYTHONPATH."""
+    import os
+    import subprocess
+    import sys
+
+    repo_root = Path(__file__).resolve().parents[1]
+    script_path = repo_root / "scripts" / "compare_densenet_efficientnet_oof.py"
+
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+
+    res = subprocess.run(
+        [sys.executable, str(script_path), "--help"],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        env=env,
+    )
+
+    assert res.returncode == 0, f"Script failed with exit code {res.returncode}. Output:\n{res.stderr}"
+    assert "ModuleNotFoundError" not in res.stderr
+    assert "ModuleNotFoundError" not in res.stdout
+    assert "usage:" in res.stdout.lower() or "--help" in res.stdout
