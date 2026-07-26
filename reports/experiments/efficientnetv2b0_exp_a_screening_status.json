@@ -1,0 +1,10 @@
+{
+  "experiment": "efficientnetv2b0-exp-a-fair-comparison",
+  "status": "screening_rejected",
+  "evaluated_folds": [0, 3, 4],
+  "mean_accuracy": 0.7952,
+  "mean_macro_f1": 0.6926,
+  "mean_weighted_f1": 0.7871,
+  "reason": "Lower accuracy, macro F1 and weighted F1 than DenseNet121 Exp D on the same screening folds.",
+  "remaining_folds_trained": false
+}
