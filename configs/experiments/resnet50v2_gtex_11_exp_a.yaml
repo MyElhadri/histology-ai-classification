@@ -1,0 +1,83 @@
+experiment:
+  name: resnet50v2-gtex-11-exp-a
+  seed: 42
+
+dataset:
+  expected_root_name: GTEx_11_classes
+  train_subdir: train
+  validation_subdir: validation
+  test_subdir: test
+  metadata_subdir: metadata
+  class_mapping: metadata/class_mapping.json
+  num_classes: 11
+  input_size: [224, 224]
+  donor_split_required: true
+
+model:
+  architecture: ResNet50V2
+  weights: imagenet
+  include_top: false
+  input_shape: [224, 224, 3]
+  num_classes: 11
+  head_config:
+    type: article_inspired
+    dense_1_units: 512
+    dense_1_activation: elu
+    dense_2_units: 128
+    dense_2_activation: elu
+    dropout_rate: 0.30
+    batch_normalization: true
+    l2_strength: 0.01
+
+preprocessing:
+  input_dtype: float32
+  input_range: [0, 255]
+  output_range: [-1, 1]
+  external_divide_by_255: false
+  external_preprocess_input: false
+
+augmentation:
+  horizontal_flip: true
+  vertical_flip: true
+  rotation_factor: 0.1
+  zoom_factor: 0.1
+  contrast_factor: 0.1
+  translation_height_factor: 0.1
+  translation_width_factor: 0.1
+
+training:
+  batch_size: 32
+  mixed_precision: true
+  optimizer: adam
+  loss: categorical_crossentropy
+  early_stopping_patience: 5
+  reduce_lr_patience: 2
+  reduce_lr_factor: 0.5
+  use_class_weights: true
+
+  phase_1:
+    name: head_training
+    epochs: 8
+    learning_rate: 3.0e-4
+    backbone_trainable: false
+
+  phase_2:
+    name: partial_fine_tuning
+    epochs: 20
+    learning_rate: 1.0e-5
+    trainable_backbone_fraction: 0.30
+    freeze_batch_normalization: true
+
+  phase_3:
+    name: full_fine_tuning
+    epochs: 8
+    learning_rate: 3.0e-6
+    freeze_batch_normalization: true
+
+evaluation:
+  use_test_during_training: false
+  generate_validation_report: true
+  generate_test_report: false
+  patch_level: true
+  donor_level_if_available: true
+  tta: false
