@@ -169,10 +169,12 @@ def main() -> None:
     parser.add_argument("--class-mapping", type=Path, required=True)
     args = parser.parse_args()
 
+    from src.data.gtex_integrity import parse_gtex_class_mapping
     with open(args.class_mapping, "r", encoding="utf-8") as f:
-        class_mapping = json.load(f)
+        raw_mapping = json.load(f)
         
-    class_names = [k for k, v in sorted(class_mapping.items(), key=lambda item: item[1])]
+    parsed = parse_gtex_class_mapping(raw_mapping)
+    class_names = parsed["classes"]
 
     process_split_report("validation", args.results_dir, class_names)
     process_split_report("test", args.results_dir, class_names)

@@ -13,10 +13,18 @@ def mock_gtex_dataset(tmp_path: Path):
     metadata_dir = tmp_path / "metadata"
     metadata_dir.mkdir()
     
-    # Create class mapping
+    # Create class mapping with 6 root keys to simulate the error condition
     class_mapping = {cls: idx for idx, cls in enumerate(EXPECTED_CLASS_COUNTS.keys())}
+    complex_mapping = {
+        "class_to_idx": class_mapping,
+        "idx_to_class": {v: k for k, v in class_mapping.items()},
+        "classes": list(class_mapping.keys()),
+        "class_weights": {str(v): 1.0 for v in class_mapping.values()},
+        "num_classes": 11,
+        "metadata": {"version": "1.0"}
+    }
     with open(metadata_dir / "class_mapping.json", "w") as f:
-        json.dump(class_mapping, f)
+        json.dump(complex_mapping, f)
         
     donor_counter = 1
     
@@ -114,3 +122,40 @@ def test_audit_gtex_dataset_count_mismatch(mock_gtex_dataset: Path):
     
     with pytest.raises(ValueError, match="Class count mismatch"):
         audit_gtex_dataset(mock_gtex_dataset)
+
+
+def test_parse_gtex_class_mapping():
+    from src.data.gtex_integrity import parse_gtex_class_mapping
+    from src.data.gtex_integrity import EXPECTED_CLASS_COUNTS
+    
+    class_mapping = {cls: idx for idx, cls in enumerate(EXPECTED_CLASS_COUNTS.keys())}
+    complex_mapping = {
+        "class_to_idx": class_mapping,
+        "idx_to_class": {v: k for k, v in class_mapping.items()},
+        "classes": list(class_mapping.keys()),
+        "class_weights": {str(v): 1.5 for v in class_mapping.values()},
+        "num_classes": 11,
+        "metadata": {"version": "1.0"}
+    }
+    
+    parsed = parse_gtex_class_mapping(complex_mapping)
+    assert parsed["num_classes"] == 11
+    assert parsed["class_to_idx"] == class_mapping
+    
+    # Negative: missing class
+    bad_mapping = class_mapping.copy()
+    del bad_mapping["bladder"]
+    with pytest.raises(ValueError, match="Class mismatch"):
+        parse_gtex_class_mapping({"class_to_idx": bad_mapping})
+        
+    # Negative: extra class
+    bad_mapping = class_mapping.copy()
+    bad_mapping["extra"] = 11
+    with pytest.raises(ValueError, match="Class mismatch"):
+        parse_gtex_class_mapping({"class_to_idx": bad_mapping})
+        
+    # Negative: invalid weights
+    bad_weight_mapping = complex_mapping.copy()
+    bad_weight_mapping["class_weights"] = {"0": -1.0}
+    with pytest.raises(ValueError, match="Invalid weight"):
+        parse_gtex_class_mapping(bad_weight_mapping)

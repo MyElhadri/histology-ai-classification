@@ -119,11 +119,12 @@ def main() -> None:
 
     # Class Mapping
     map_path = args.dataset_dir / config["dataset"]["class_mapping"]
+    from src.data.gtex_integrity import parse_gtex_class_mapping
     with open(map_path, "r", encoding="utf-8") as f:
-        class_mapping = json.load(f)
-    
-    # Sort classes by ID
-    class_names = [k for k, v in sorted(class_mapping.items(), key=lambda item: item[1])]
+        raw_mapping = json.load(f)
+        
+    parsed = parse_gtex_class_mapping(raw_mapping)
+    class_names = parsed["classes"]
 
     # Read Metadata for donor and paths
     csv_path = args.dataset_dir / "metadata" / f"{args.split}.csv"

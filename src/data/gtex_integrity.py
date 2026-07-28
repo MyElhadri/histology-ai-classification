@@ -41,6 +41,64 @@ def find_donor_column(columns: list[str]) -> str | None:
     return None
 
 
+def parse_gtex_class_mapping(mapping: dict) -> dict:
+    """Parses and normalizes the GTEx class_mapping.json document."""
+    
+    if "class_to_idx" in mapping:
+        class_to_idx = mapping["class_to_idx"]
+    elif "classes" in mapping and isinstance(mapping["classes"], dict):
+        class_to_idx = mapping["classes"]
+    else:
+        class_to_idx = {k: v for k, v in mapping.items() if isinstance(v, int)}
+                
+    if not class_to_idx:
+        raise ValueError("Could not extract a valid class mapping from the document.")
+
+    expected_classes = {
+        "bladder", "brain", "cerebellum", "kidney", "liver", "lung", 
+        "muscle", "oesophagus", "pancreas", "spleen", "testis"
+    }
+    
+    found_classes = set(class_to_idx.keys())
+    if found_classes != expected_classes:
+        missing = expected_classes - found_classes
+        extra = found_classes - expected_classes
+        raise ValueError(f"Class mismatch. Missing: {missing}, Extra: {extra}")
+        
+    idx_to_class = {v: k for k, v in class_to_idx.items()}
+    if len(idx_to_class) != 11:
+        raise ValueError("Duplicate indices found in class mapping.")
+        
+    expected_indices = set(range(11))
+    if set(idx_to_class.keys()) != expected_indices:
+        raise ValueError("Indices must be exactly 0 to 10.")
+        
+    class_weights = {}
+    if "class_weights" in mapping:
+        import math
+        cw = mapping["class_weights"]
+        for k, v in cw.items():
+            if str(k).isdigit():
+                idx = int(k)
+                if idx not in idx_to_class:
+                    raise ValueError(f"Weight for unknown index {idx}")
+                try:
+                    weight = float(v)
+                except ValueError:
+                    raise ValueError(f"Weight for {idx} must be numeric.")
+                if weight <= 0 or not math.isfinite(weight):
+                    raise ValueError(f"Invalid weight {weight} for {idx}")
+                class_weights[idx] = weight
+
+    return {
+        "class_to_idx": class_to_idx,
+        "idx_to_class": idx_to_class,
+        "classes": [idx_to_class[i] for i in range(11)],
+        "class_weights": class_weights,
+        "num_classes": 11
+    }
+
+
 def audit_gtex_dataset(dataset_dir: Path | str, output_report: Path | str | None = None) -> dict:
     """Audit the GTEx dataset for exact counts and donor leakage.
 
@@ -82,14 +140,10 @@ def audit_gtex_dataset(dataset_dir: Path | str, output_report: Path | str | None
         raise FileNotFoundError(f"Missing class mapping: {mapping_path}")
         
     with open(mapping_path, "r", encoding="utf-8") as f:
-        class_mapping = json.load(f)
+        raw_mapping = json.load(f)
         
-    if len(class_mapping) != 11:
-        raise ValueError(f"Expected 11 classes, got {len(class_mapping)} in class_mapping.json")
-        
-    for k, v in class_mapping.items():
-        if int(v) not in range(11):
-            raise ValueError(f"Class index out of bounds (0-10): {k} -> {v}")
+    parsed_mapping = parse_gtex_class_mapping(raw_mapping)
+    class_mapping = parsed_mapping["class_to_idx"]
 
     report = {
         "status": "PASS",
