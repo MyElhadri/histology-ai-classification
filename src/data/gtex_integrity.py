@@ -49,10 +49,18 @@ def parse_gtex_class_mapping(mapping: dict) -> dict:
     elif "classes" in mapping and isinstance(mapping["classes"], dict):
         class_to_idx = mapping["classes"]
     else:
-        class_to_idx = {k: v for k, v in mapping.items() if isinstance(v, int)}
+        class_to_idx = {}
+        for k, v in mapping.items():
+            if isinstance(v, int):
+                class_to_idx[k] = v
+            elif isinstance(v, str) and v.isdigit():
+                class_to_idx[k] = int(v)
                 
     if not class_to_idx:
         raise ValueError("Could not extract a valid class mapping from the document.")
+
+    # Ensure all values in class_to_idx are integers
+    class_to_idx = {k: int(v) for k, v in class_to_idx.items()}
 
     expected_classes = {
         "bladder", "brain", "cerebellum", "kidney", "liver", "lung", 

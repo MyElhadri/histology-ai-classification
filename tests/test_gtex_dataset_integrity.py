@@ -159,3 +159,13 @@ def test_parse_gtex_class_mapping():
     bad_weight_mapping["class_weights"] = {"0": -1.0}
     with pytest.raises(ValueError, match="Invalid weight"):
         parse_gtex_class_mapping(bad_weight_mapping)
+        
+    # Test string integers flat
+    string_int_mapping = {k: str(v) for k, v in class_mapping.items()}
+    parsed_str = parse_gtex_class_mapping(string_int_mapping)
+    assert parsed_str["class_to_idx"] == class_mapping
+    
+    # Test string integers inside class_to_idx
+    str_idx = {"class_to_idx": {k: str(v) for k, v in class_mapping.items()}}
+    parsed_str2 = parse_gtex_class_mapping(str_idx)
+    assert parsed_str2["class_to_idx"] == class_mapping
