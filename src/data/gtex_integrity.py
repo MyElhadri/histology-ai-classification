@@ -41,13 +41,43 @@ def find_donor_column(columns: list[str]) -> str | None:
     return None
 
 
+def _parse_counts(counts_dict: dict, class_to_idx: dict, section_name: str) -> dict:
+    parsed = {}
+    for k, v in counts_dict.items():
+        if k not in class_to_idx:
+            continue
+        try:
+            val = float(v)
+        except ValueError:
+            raise ValueError(f"Count for {k} in {section_name} must be a number.")
+        if not val.is_integer() or val < 0:
+            raise ValueError(f"Count for {k} in {section_name} must be a non-negative integer.")
+        parsed[k] = int(val)
+    if len(parsed) != 11:
+        raise ValueError(f"{section_name} must contain exactly 11 classes, got {len(parsed)}.")
+    return parsed
+
 def parse_gtex_class_mapping(mapping: dict) -> dict:
     """Parses and normalizes the GTEx class_mapping.json document."""
     
-    if "class_to_idx" in mapping:
+    mapping_source_path = ""
+    detected_schema = "unknown"
+    
+    if "label_to_index" in mapping:
+        class_to_idx = mapping["label_to_index"]
+        if "index_to_label" in mapping:
+            detected_schema = "label_to_index/index_to_label"
+        else:
+            detected_schema = "label_to_index"
+        mapping_source_path = "$.label_to_index"
+    elif "class_to_idx" in mapping:
         class_to_idx = mapping["class_to_idx"]
+        detected_schema = "class_to_idx"
+        mapping_source_path = "$.class_to_idx"
     elif "classes" in mapping and isinstance(mapping["classes"], dict):
         class_to_idx = mapping["classes"]
+        detected_schema = "classes"
+        mapping_source_path = "$.classes"
     else:
         class_to_idx = {}
         for k, v in mapping.items():
@@ -55,12 +85,20 @@ def parse_gtex_class_mapping(mapping: dict) -> dict:
                 class_to_idx[k] = v
             elif isinstance(v, str) and v.isdigit():
                 class_to_idx[k] = int(v)
+        detected_schema = "flat"
+        mapping_source_path = "$"
                 
     if not class_to_idx:
-        raise ValueError("Could not extract a valid class mapping from the document.")
+        raise ValueError(
+            "Could not extract a valid class mapping from the document.\n"
+            f"Root keys found: {list(mapping.keys())}\n"
+            "Supported mapping keys: 'label_to_index', 'class_to_idx', 'classes' or flat integers."
+        )
 
-    # Ensure all values in class_to_idx are integers
-    class_to_idx = {k: int(v) for k, v in class_to_idx.items()}
+    try:
+        class_to_idx = {str(k): int(v) for k, v in class_to_idx.items()}
+    except ValueError:
+        raise ValueError("Some class indices could not be converted to integers.")
 
     expected_classes = {
         "bladder", "brain", "cerebellum", "kidney", "liver", "lung", 
@@ -71,7 +109,11 @@ def parse_gtex_class_mapping(mapping: dict) -> dict:
     if found_classes != expected_classes:
         missing = expected_classes - found_classes
         extra = found_classes - expected_classes
-        raise ValueError(f"Class mismatch. Missing: {missing}, Extra: {extra}")
+        raise ValueError(
+            f"Class mismatch in {mapping_source_path}.\n"
+            f"Missing: {missing}\n"
+            f"Extra: {extra}"
+        )
         
     idx_to_class = {v: k for k, v in class_to_idx.items()}
     if len(idx_to_class) != 11:
@@ -79,32 +121,71 @@ def parse_gtex_class_mapping(mapping: dict) -> dict:
         
     expected_indices = set(range(11))
     if set(idx_to_class.keys()) != expected_indices:
-        raise ValueError("Indices must be exactly 0 to 10.")
+        missing_idx = expected_indices - set(idx_to_class.keys())
+        extra_idx = set(idx_to_class.keys()) - expected_indices
+        raise ValueError(
+            f"Indices must be exactly 0 to 10.\n"
+            f"Missing indices: {missing_idx}\n"
+            f"Extra indices: {extra_idx}"
+        )
         
+    if "index_to_label" in mapping:
+        for idx_str, class_name in mapping["index_to_label"].items():
+            if not str(idx_str).isdigit():
+                continue
+            idx = int(idx_str)
+            if idx not in idx_to_class or idx_to_class[idx] != class_name:
+                raise ValueError(f"Incohérence entre {mapping_source_path} et index_to_label pour l'index {idx}")
+
     class_weights = {}
     if "class_weights" in mapping:
         import math
         cw = mapping["class_weights"]
         for k, v in cw.items():
-            if str(k).isdigit():
+            if k in class_to_idx:
+                idx = class_to_idx[k]
+            elif str(k).isdigit() and int(k) in idx_to_class:
                 idx = int(k)
-                if idx not in idx_to_class:
-                    raise ValueError(f"Weight for unknown index {idx}")
-                try:
-                    weight = float(v)
-                except ValueError:
-                    raise ValueError(f"Weight for {idx} must be numeric.")
-                if weight <= 0 or not math.isfinite(weight):
-                    raise ValueError(f"Invalid weight {weight} for {idx}")
-                class_weights[idx] = weight
+            else:
+                continue
+            try:
+                weight = float(v)
+            except ValueError:
+                raise ValueError(f"Weight for {k} must be numeric.")
+            if weight <= 0 or not math.isfinite(weight) or math.isnan(weight):
+                raise ValueError(f"Invalid weight {weight} for {k} (must be > 0 and finite).")
+            class_weights[idx] = weight
+        if len(class_weights) != 11:
+            raise ValueError(f"class_weights must contain exactly 11 classes, got {len(class_weights)}.")
+
+    train_counts = {}
+    if "train_counts" in mapping:
+        train_counts = _parse_counts(mapping["train_counts"], class_to_idx, "train_counts")
+    
+    validation_counts = {}
+    if "validation_counts" in mapping:
+        validation_counts = _parse_counts(mapping["validation_counts"], class_to_idx, "validation_counts")
+        
+    test_counts = {}
+    if "test_counts" in mapping:
+        test_counts = _parse_counts(mapping["test_counts"], class_to_idx, "test_counts")
+
+    print(f"Detected GTEx mapping schema:\n{detected_schema}\n")
+    print(f"Mapping source:\n{mapping_source_path}\n")
 
     return {
         "class_to_idx": class_to_idx,
         "idx_to_class": idx_to_class,
         "classes": [idx_to_class[i] for i in range(11)],
         "class_weights": class_weights,
-        "num_classes": 11
+        "num_classes": 11,
+        "train_counts": train_counts,
+        "validation_counts": validation_counts,
+        "test_counts": test_counts,
+        "detected_schema": detected_schema,
+        "mapping_source_path": mapping_source_path
     }
+
 
 
 def audit_gtex_dataset(dataset_dir: Path | str, output_report: Path | str | None = None) -> dict:
@@ -160,7 +241,16 @@ def audit_gtex_dataset(dataset_dir: Path | str, output_report: Path | str | None
         "splits": {},
         "donor_level_available": bool(donor_col),
         "donor_column": donor_col,
-        "leakage_checks": {}
+        "leakage_checks": {},
+        "detected_schema": parsed_mapping.get("detected_schema"),
+        "mapping_source_path": parsed_mapping.get("mapping_source_path"),
+        "class_to_idx": parsed_mapping.get("class_to_idx"),
+        "idx_to_class": {str(k): v for k, v in parsed_mapping.get("idx_to_class", {}).items()},
+        "classes": parsed_mapping.get("classes"),
+        "class_weights_by_index": {str(k): v for k, v in parsed_mapping.get("class_weights", {}).items()},
+        "train_counts_expected": parsed_mapping.get("train_counts"),
+        "validation_counts_expected": parsed_mapping.get("validation_counts"),
+        "test_counts_expected": parsed_mapping.get("test_counts")
     }
 
     # Verify counts
@@ -181,12 +271,18 @@ def audit_gtex_dataset(dataset_dir: Path | str, output_report: Path | str | None
         report["splits"][split] = {
             "expected": EXPECTED_COUNTS[split],
             "actual": count,
-            "match": count == EXPECTED_COUNTS[split]
+            "match": count == EXPECTED_COUNTS[split],
+            "expected_class_counts": {k: v for k, v in EXPECTED_CLASS_COUNTS.items()},
+            "actual_class_counts": class_counts,
+            "differences": {k: class_counts.get(k, 0) - EXPECTED_CLASS_COUNTS[k][split] for k in EXPECTED_CLASS_COUNTS}
         }
         if count != EXPECTED_COUNTS[split]:
             raise ValueError(f"Split {split} count mismatch. Expected {EXPECTED_COUNTS[split]}, got {count}")
             
     report["total_actual"] = total_actual
+    report["total_expected"] = EXPECTED_COUNTS["total"]
+    report["total_difference"] = total_actual - EXPECTED_COUNTS["total"]
+    
     if total_actual != EXPECTED_COUNTS["total"]:
         raise ValueError(f"Total count mismatch. Expected {EXPECTED_COUNTS['total']}, got {total_actual}")
 

@@ -1,4 +1,5 @@
 import json
+import copy
 from pathlib import Path
 
 import pandas as pd
@@ -169,3 +170,147 @@ def test_parse_gtex_class_mapping():
     str_idx = {"class_to_idx": {k: str(v) for k, v in class_mapping.items()}}
     parsed_str2 = parse_gtex_class_mapping(str_idx)
     assert parsed_str2["class_to_idx"] == class_mapping
+
+@pytest.fixture
+def real_gtex_schema_json():
+    return {
+        "label_to_index": {
+            "bladder": 0, "brain": 1, "cerebellum": 2, "kidney": 3,
+            "liver": 4, "lung": 5, "muscle": 6, "oesophagus": 7,
+            "pancreas": 8, "spleen": 9, "testis": 10
+        },
+        "index_to_label": {
+            "0": "bladder", "1": "brain", "2": "cerebellum", "3": "kidney",
+            "4": "liver", "5": "lung", "6": "muscle", "7": "oesophagus",
+            "8": "pancreas", "9": "spleen", "10": "testis"
+        },
+        "class_weights": {
+            "bladder": 0.9555, "brain": 1.5971, "cerebellum": 1.8193, "kidney": 0.8649,
+            "liver": 0.8487, "lung": 0.8574, "muscle": 0.8469, "oesophagus": 0.8456,
+            "pancreas": 0.9332, "spleen": 0.792, "testis": 1.7261
+        },
+        "train_counts": {
+            "spleen": 4640, "brain": 2301, "pancreas": 3938, "oesophagus": 4346,
+            "lung": 4286, "liver": 4330, "kidney": 4249, "testis": 2129,
+            "muscle": 4339, "cerebellum": 2020, "bladder": 3846
+        },
+        "validation_counts": {
+            "lung": 1005, "kidney": 1000, "pancreas": 1110, "liver": 730,
+            "cerebellum": 220, "brain": 500, "muscle": 619, "spleen": 820,
+            "oesophagus": 710, "testis": 400, "bladder": 1000
+        },
+        "test_counts": {
+            "oesophagus": 1000, "pancreas": 1009, "brain": 500, "lung": 684,
+            "spleen": 600, "cerebellum": 310, "muscle": 1093, "liver": 999,
+            "testis": 500, "kidney": 709, "bladder": 800
+        }
+    }
+
+def test_parse_real_gtex_label_to_index_schema(real_gtex_schema_json):
+    from src.data.gtex_integrity import parse_gtex_class_mapping
+    
+    raw_document = real_gtex_schema_json
+    assert len(raw_document) == 6
+    
+    parsed = parse_gtex_class_mapping(raw_document)
+    
+    assert parsed["num_classes"] == 11
+    assert parsed["detected_schema"] == "label_to_index/index_to_label"
+    assert parsed["mapping_source_path"] == "$.label_to_index"
+    
+    assert parsed["class_to_idx"]["bladder"] == 0
+    assert parsed["class_to_idx"]["testis"] == 10
+    assert parsed["idx_to_class"][0] == "bladder"
+    assert parsed["idx_to_class"][10] == "testis"
+    
+    expected_classes_order = ["bladder", "brain", "cerebellum", "kidney", "liver", "lung", "muscle", "oesophagus", "pancreas", "spleen", "testis"]
+    assert parsed["classes"] == expected_classes_order
+    
+    assert parsed["class_weights"][0] == 0.9555
+    assert parsed["class_weights"][10] == 1.7261
+    
+    assert sum(parsed["train_counts"].values()) == 40424
+    assert sum(parsed["validation_counts"].values()) == 8114
+    assert sum(parsed["test_counts"].values()) == 8204
+
+def test_parse_real_gtex_negative_cases(real_gtex_schema_json):
+    from src.data.gtex_integrity import parse_gtex_class_mapping
+    
+    # 1. label_to_index absent but index_to_label present -> unsupported (flat fallback)
+    # wait, if label_to_index absent, it falls back to empty flat and raises ValueError
+    bad1 = real_gtex_schema_json.copy()
+    del bad1["label_to_index"]
+    with pytest.raises(ValueError):
+        parse_gtex_class_mapping(bad1)
+        
+    # 2. index_to_label incoherence
+    bad2 = copy.deepcopy(real_gtex_schema_json)
+    bad2["index_to_label"]["0"] = "brain"
+    with pytest.raises(ValueError, match="Incohérence"):
+        parse_gtex_class_mapping(bad2)
+        
+    # 3. classe manquante
+    bad3 = copy.deepcopy(real_gtex_schema_json)
+    del bad3["label_to_index"]["bladder"]
+    with pytest.raises(ValueError, match="Class mismatch"):
+        parse_gtex_class_mapping(bad3)
+        
+    # 4. classe supplémentaire
+    bad4 = copy.deepcopy(real_gtex_schema_json)
+    bad4["label_to_index"]["extra"] = 11
+    with pytest.raises(ValueError, match="Class mismatch"):
+        parse_gtex_class_mapping(bad4)
+        
+    # 5. index dupliqué
+    bad5 = copy.deepcopy(real_gtex_schema_json)
+    bad5["label_to_index"]["testis"] = 0
+    with pytest.raises(ValueError, match="Duplicate indices found"):
+        parse_gtex_class_mapping(bad5)
+        
+    # 6. index hors plage
+    bad6 = copy.deepcopy(real_gtex_schema_json)
+    bad6["label_to_index"]["bladder"] = 11
+    with pytest.raises(ValueError, match="Indices must be exactly"):
+        parse_gtex_class_mapping(bad6)
+        
+    # 7. poids manquant
+    bad7 = copy.deepcopy(real_gtex_schema_json)
+    del bad7["class_weights"]["bladder"]
+    with pytest.raises(ValueError, match="exactly 11 classes"):
+        parse_gtex_class_mapping(bad7)
+        
+    # 8. poids nul
+    bad8 = copy.deepcopy(real_gtex_schema_json)
+    bad8["class_weights"]["bladder"] = 0
+    with pytest.raises(ValueError, match="Invalid weight"):
+        parse_gtex_class_mapping(bad8)
+        
+    # 9. poids négatif
+    bad9 = copy.deepcopy(real_gtex_schema_json)
+    bad9["class_weights"]["bladder"] = -1.0
+    with pytest.raises(ValueError, match="Invalid weight"):
+        parse_gtex_class_mapping(bad9)
+        
+    # 10. poids NaN
+    bad10 = copy.deepcopy(real_gtex_schema_json)
+    bad10["class_weights"]["bladder"] = float('nan')
+    with pytest.raises(ValueError, match="Invalid weight"):
+        parse_gtex_class_mapping(bad10)
+        
+    # 11. poids infini
+    bad11 = copy.deepcopy(real_gtex_schema_json)
+    bad11["class_weights"]["bladder"] = float('inf')
+    with pytest.raises(ValueError, match="Invalid weight"):
+        parse_gtex_class_mapping(bad11)
+        
+    # 12. compte de classe manquant
+    bad12 = copy.deepcopy(real_gtex_schema_json)
+    del bad12["train_counts"]["bladder"]
+    with pytest.raises(ValueError, match="exactly 11 classes"):
+        parse_gtex_class_mapping(bad12)
+        
+    # 13. compte négatif
+    bad13 = copy.deepcopy(real_gtex_schema_json)
+    bad13["train_counts"]["bladder"] = -5
+    with pytest.raises(ValueError, match="non-negative integer"):
+        parse_gtex_class_mapping(bad13)
