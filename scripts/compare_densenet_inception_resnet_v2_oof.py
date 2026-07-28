@@ -64,7 +64,11 @@ def load_and_validate_predictions(
         dense_file = densenet_dir / f"fold_{fold}_oof_predictions.csv"
         if not dense_file.is_file():
             raise FileNotFoundError(f"DenseNet121 OOF file not found: {dense_file}")
-        dense_dfs.append(pd.read_csv(dense_file))
+        df = pd.read_csv(dense_file)
+        for col in PROB_COLS:
+            if col not in df.columns:
+                raise ValueError(f"Missing column '{col}' in DenseNet121 OOF DataFrame.")
+        dense_dfs.append(df)
     dense_df = pd.concat(dense_dfs, ignore_index=True)
 
     # Load InceptionResNetV2 predictions
@@ -73,7 +77,11 @@ def load_and_validate_predictions(
         irv2_file = inception_resnet_v2_dir / f"fold_{fold}_oof_predictions.csv"
         if not irv2_file.is_file():
             raise FileNotFoundError(f"InceptionResNetV2 OOF file not found: {irv2_file}")
-        irv2_dfs.append(pd.read_csv(irv2_file))
+        df = pd.read_csv(irv2_file)
+        for col in PROB_COLS:
+            if col not in df.columns:
+                raise ValueError(f"Missing column '{col}' in InceptionResNetV2 OOF DataFrame.")
+        irv2_dfs.append(df)
     irv2_df = pd.concat(irv2_dfs, ignore_index=True)
 
     # Check for duplicates
@@ -88,12 +96,7 @@ def load_and_validate_predictions(
             f"{irv2_df['image_id'][irv2_df['image_id'].duplicated()].tolist()[:5]}"
         )
 
-    # Verify probability columns exist
-    for col in PROB_COLS:
-        if col not in dense_df.columns:
-            raise ValueError(f"Missing column '{col}' in DenseNet121 OOF DataFrame.")
-        if col not in irv2_df.columns:
-            raise ValueError(f"Missing column '{col}' in InceptionResNetV2 OOF DataFrame.")
+
 
     # Align strictly on image_id + fold
     common_ids = set(dense_df["image_id"]).intersection(set(irv2_df["image_id"]))
