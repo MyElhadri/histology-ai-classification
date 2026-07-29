@@ -261,7 +261,8 @@ def audit_gtex_dataset(dataset_dir: Path | str, output_report: Path | str | None
         total_actual += count
         
         # Verify class counts
-        class_counts = df["class"].value_counts().to_dict()
+        class_col = "class" if "class" in df.columns else "label"
+        class_counts = df[class_col].value_counts().to_dict()
         for cls_name, splits_counts in EXPECTED_CLASS_COUNTS.items():
             expected = splits_counts[split]
             actual = class_counts.get(cls_name, 0)

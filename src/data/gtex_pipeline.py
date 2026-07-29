@@ -102,7 +102,8 @@ def create_gtex_dataset(
             raise FileNotFoundError(f"Image not found at expected path: {p}")
             
     filepaths = df["abs_path"].values
-    labels = df["class_id"].values
+    label_col = "class_id" if "class_id" in df.columns else "label_index"
+    labels = df[label_col].values
     
     dataset = tf.data.Dataset.from_tensor_slices((filepaths, labels))
     
