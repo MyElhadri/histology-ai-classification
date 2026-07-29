@@ -172,3 +172,86 @@ def test_pipeline_labels_shape(mock_config, tmp_path):
         assert labels.dtype in [tf.int32, tf.int64]
         assert tf.reduce_min(labels) >= 0
         assert tf.reduce_max(labels) <= 10
+
+
+def test_no_double_preprocessing(mock_config):
+    """Verify exactly one Rescaling layer exists in the model."""
+    from src.models.resnet50v2 import verify_no_double_preprocessing
+    from tensorflow.keras.layers import Rescaling
+
+    model = build_resnet50v2_model(mock_config, weights=None)
+
+    # Should not raise
+    verify_no_double_preprocessing(model)
+
+    # Count Rescaling layers
+    rescaling_layers = [l for l in model.layers if isinstance(l, Rescaling)]
+    assert len(rescaling_layers) == 1, f"Expected 1 Rescaling layer, got {len(rescaling_layers)}"
+
+    # Verify parameters
+    r = rescaling_layers[0]
+    assert abs(float(r.scale) - 1.0 / 127.5) < 1e-6
+    assert abs(float(r.offset) - (-1.0)) < 1e-6
+
+
+def test_notebook_safety_flags():
+    """Verify notebook committed with safe defaults and no destructive commands."""
+    import json
+    nb_path = Path("notebooks/kaggle/resnet50v2_gtex_11_exp_a_complete_training.ipynb")
+    with open(nb_path, "r", encoding="utf-8") as f:
+        nb = json.load(f)
+
+    all_source = ""
+    flags_found = {}
+    for cell in nb["cells"]:
+        src = "".join(cell.get("source", []))
+        all_source += src + "\n"
+
+        # Extract committed flag values from the config cell
+        for flag in ["RUN_TRAINING", "RUN_FINAL_TEST", "RUN_SMOKE_TEST"]:
+            for line in cell.get("source", []):
+                stripped = line.strip()
+                if stripped.startswith(f"{flag} =") or stripped.startswith(f"{flag}="):
+                    if "False" in stripped:
+                        flags_found[flag] = False
+                    elif "True" in stripped:
+                        flags_found[flag] = True
+
+    # Safety flags must be False in committed version
+    assert flags_found.get("RUN_TRAINING") is False, "RUN_TRAINING must be False in committed notebook"
+    assert flags_found.get("RUN_FINAL_TEST") is False, "RUN_FINAL_TEST must be False in committed notebook"
+    assert flags_found.get("RUN_SMOKE_TEST") is False, "RUN_SMOKE_TEST must be False in committed notebook"
+
+    # No destructive commands
+    assert "git reset --hard" not in all_source, "git reset --hard found in notebook"
+
+    # No local paths
+    assert "C:\\" not in all_source and "c:\\" not in all_source, "Windows path found in notebook"
+    assert "/content/drive" not in all_source, "Google Drive / Colab path found in notebook"
+
+    # No secrets
+    assert "ghp_" not in all_source, "GitHub token found in notebook"
+    assert "kaggle.json" not in all_source, "kaggle.json reference found in notebook"
+
+
+def test_smoke_scientific_output_isolation():
+    """Verify the training script isolates smoke test outputs in a subdirectory."""
+    import inspect
+    from scripts.train_resnet50v2_gtex import main as train_main
+
+    source = inspect.getsource(train_main)
+    # The script appends /smoke_test to output_dir when --smoke-test is used
+    assert "smoke_test" in source, "Training script must isolate smoke test outputs"
+
+
+def test_no_test_split_for_selection():
+    """Verify that config prohibits using test split during training."""
+    import yaml
+    config_path = Path("configs/experiments/resnet50v2_gtex_11_exp_a.yaml")
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+
+    assert config["evaluation"]["use_test_during_training"] is False, \
+        "Test split must not be used during training or model selection"
+    assert config["evaluation"]["generate_test_report"] is False, \
+        "Test report generation should be disabled by default"
