@@ -22,6 +22,7 @@ def parse_image(
     image = tf.image.decode_image(image_string, channels=3, expand_animations=False)
     image = tf.cast(image, tf.float32)
     image = tf.image.resize(image, image_size)
+    label = tf.cast(label, tf.int32)
     return image, label
 
 
@@ -142,3 +143,5 @@ def validate_batch(dataset: tf.data.Dataset) -> None:
         label_max = tf.reduce_max(labels).numpy()
         assert label_min >= 0, f"Label min value < 0: {label_min}"
         assert label_max <= 10, f"Label max value > 10: {label_max}"
+        assert labels.dtype in [tf.int32, tf.int64], f"Labels must be integer dtype, got {labels.dtype}"
+        assert len(labels.shape) == 1, f"Labels must be 1D (batch_size,), got shape {labels.shape}"

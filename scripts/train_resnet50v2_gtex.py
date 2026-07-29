@@ -83,7 +83,8 @@ def run_phase(
     val_ds: tf.data.Dataset,
     config: dict,
     output_dir: Path,
-    smoke_test: bool = False
+    smoke_test: bool = False,
+    class_weights: dict = None
 ) -> None:
     phase_config = config["training"][f"phase_{phase}"]
     epochs = 1 if smoke_test else phase_config["epochs"]
@@ -102,8 +103,11 @@ def run_phase(
     
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
-        loss=config["training"].get("loss", "sparse_categorical_crossentropy"),
-        metrics=["accuracy"]
+        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False),
+        metrics=[
+            tf.keras.metrics.SparseCategoricalAccuracy(name="accuracy"),
+            tf.keras.metrics.SparseTopKCategoricalAccuracy(k=3, name="top_3_accuracy")
+        ]
     )
     
     callbacks = setup_callbacks(
@@ -114,12 +118,23 @@ def run_phase(
         factor_lr=config["training"].get("reduce_lr_factor", 0.5)
     )
     
-    model.fit(
-        train_ds,
-        validation_data=val_ds,
-        epochs=epochs,
-        callbacks=callbacks
-    )
+    fit_kwargs = {
+        "x": train_ds,
+        "validation_data": val_ds,
+        "epochs": epochs,
+        "callbacks": callbacks
+    }
+    
+    if config["training"].get("use_class_weights") and class_weights is not None:
+        # Validate class weights
+        if set(class_weights.keys()) != set(range(11)):
+            raise ValueError(f"Class weights keys must be exactly 0 to 10. Got {class_weights.keys()}")
+        for k, v in class_weights.items():
+            if v <= 0 or tf.math.is_nan(v) or tf.math.is_inf(v):
+                raise ValueError(f"Invalid weight for class {k}: {v}")
+        fit_kwargs["class_weight"] = class_weights
+        
+    model.fit(**fit_kwargs)
     
     # Mark completion
     completion_dir = output_dir / "completion"
@@ -185,6 +200,15 @@ def main() -> None:
     weights = None if args.dry_run else config["model"]["weights"]
     model = build_resnet50v2_model(config, weights=weights)
     
+    class_weights = None
+    if config["training"].get("use_class_weights") and not args.dry_run:
+        audit_path = args.output_dir / "dataset_integrity.json"
+        if audit_path.exists():
+            with open(audit_path, "r") as f:
+                report = json.load(f)
+            if "class_weights_by_index" in report:
+                class_weights = {int(k): float(v) for k, v in report["class_weights_by_index"].items()}
+        
     # Training Phases
     for phase in [1, 2, 3]:
         completion_marker = args.output_dir / "completion" / f"phase_{phase}.done"
@@ -202,7 +226,7 @@ def main() -> None:
             validate_resnet50v2_trainability(model, phase)
             continue
             
-        run_phase(model, phase, train_ds, val_ds, config, args.output_dir, args.smoke_test)
+        run_phase(model, phase, train_ds, val_ds, config, args.output_dir, args.smoke_test, class_weights=class_weights)
         
     # Finalize
     if not args.dry_run:

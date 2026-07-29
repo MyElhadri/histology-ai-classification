@@ -150,7 +150,10 @@ def main() -> None:
     assert len(y_prob) == len(df), f"Expected {len(df)} predictions, got {len(y_prob)}"
 
     y_pred = np.argmax(y_prob, axis=1)
-    y_true = df["class_id"].values
+    
+    from src.data.gtex_integrity import resolve_gtex_metadata_columns
+    _, idx_col = resolve_gtex_metadata_columns(df)
+    y_true = df[idx_col].values
 
     # 1. Patch-Level Metrics
     metrics_patch = compute_metrics(y_true, y_pred, y_prob, class_names)
