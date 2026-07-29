@@ -314,3 +314,186 @@ def test_parse_real_gtex_negative_cases(real_gtex_schema_json):
     bad13["train_counts"]["bladder"] = -5
     with pytest.raises(ValueError, match="non-negative integer"):
         parse_gtex_class_mapping(bad13)
+
+from unittest.mock import patch
+
+@pytest.fixture
+def tiny_dataset(tmp_path: Path):
+    metadata_dir = tmp_path / "metadata"
+    metadata_dir.mkdir()
+    
+    # Class mapping for testing (must be valid for parser)
+    import json
+    class_mapping = {
+        "label_to_index": {
+            "bladder": 0, "brain": 1, "cerebellum": 2, "kidney": 3,
+            "liver": 4, "lung": 5, "muscle": 6, "oesophagus": 7,
+            "pancreas": 8, "spleen": 9, "testis": 10
+        },
+        "index_to_label": {
+            "0": "bladder", "1": "brain", "2": "cerebellum", "3": "kidney",
+            "4": "liver", "5": "lung", "6": "muscle", "7": "oesophagus",
+            "8": "pancreas", "9": "spleen", "10": "testis"
+        },
+        "class_weights": {
+            "bladder": 1.0, "brain": 1.0, "cerebellum": 1.0, "kidney": 1.0,
+            "liver": 1.0, "lung": 1.0, "muscle": 1.0, "oesophagus": 1.0,
+            "pancreas": 1.0, "spleen": 1.0, "testis": 1.0
+        },
+        "train_counts": {
+            "bladder": 1, "brain": 0, "cerebellum": 0, "kidney": 0,
+            "liver": 0, "lung": 0, "muscle": 0, "oesophagus": 0,
+            "pancreas": 0, "spleen": 0, "testis": 0
+        },
+        "validation_counts": {
+            "bladder": 1, "brain": 0, "cerebellum": 0, "kidney": 0,
+            "liver": 0, "lung": 0, "muscle": 0, "oesophagus": 0,
+            "pancreas": 0, "spleen": 0, "testis": 0
+        },
+        "test_counts": {
+            "bladder": 1, "brain": 0, "cerebellum": 0, "kidney": 0,
+            "liver": 0, "lung": 0, "muscle": 0, "oesophagus": 0,
+            "pancreas": 0, "spleen": 0, "testis": 0
+        }
+    }
+    with open(metadata_dir / "class_mapping.json", "w") as f:
+        json.dump(class_mapping, f)
+        
+    for split in ["train", "validation", "test"]:
+        df = pd.DataFrame([{
+            "image_path": f"{split}/bladder_0.png",
+            "label": "bladder",
+            "label_index": 0,
+            "donor_id": f"donor_{split}"
+        }])
+        df.to_csv(metadata_dir / f"{split}.csv", index=False)
+        
+    return tmp_path
+
+@pytest.fixture
+def patch_counts():
+    with patch("src.data.gtex_integrity.EXPECTED_COUNTS", {"train": 1, "validation": 1, "test": 1, "total": 3}), \
+         patch("src.data.gtex_integrity.EXPECTED_CLASS_COUNTS", {"bladder": {"train": 1, "validation": 1, "test": 1}}):
+        yield
+
+def test_A_label_label_index_valid(tiny_dataset, patch_counts):
+    from src.data.gtex_integrity import audit_gtex_dataset
+    report = audit_gtex_dataset(tiny_dataset)
+    assert report["status"] == "PASS"
+    
+    # Test pipeline on this valid dataset
+    from src.data.gtex_pipeline import create_gtex_dataset, validate_batch
+    # create fake images to avoid FileNotFoundError in pipeline
+    for split in ["train", "validation", "test"]:
+        img_dir = tiny_dataset / split
+        img_dir.mkdir(parents=True, exist_ok=True)
+        img_path = img_dir / "bladder_0.png"
+        import numpy as np
+        from PIL import Image
+        Image.fromarray(np.zeros((10, 10, 3), dtype=np.uint8)).save(img_path)
+        
+    ds = create_gtex_dataset(tiny_dataset, "train", is_training=False, batch_size=1)
+    validate_batch(ds)
+    for images, labels in ds.take(1):
+        assert labels.numpy()[0] == 0  # index of bladder
+
+def test_B_legacy_class_class_id(tiny_dataset, patch_counts):
+    from src.data.gtex_integrity import audit_gtex_dataset
+    for split in ["train", "validation", "test"]:
+        csv_path = tiny_dataset / "metadata" / f"{split}.csv"
+        df = pd.read_csv(csv_path)
+        df = df.rename(columns={"label": "class", "label_index": "class_id"})
+        df.to_csv(csv_path, index=False)
+        
+    report = audit_gtex_dataset(tiny_dataset)
+    assert report["status"] == "PASS"
+
+def test_C_incorrect_label(tiny_dataset, patch_counts):
+    from src.data.gtex_integrity import audit_gtex_dataset
+    csv_path = tiny_dataset / "metadata" / "train.csv"
+    df = pd.read_csv(csv_path)
+    df.loc[0, "label"] = "unknown_class"
+    df.to_csv(csv_path, index=False)
+    with pytest.raises(ValueError, match="Unknown label"):
+        audit_gtex_dataset(tiny_dataset)
+
+def test_D_incorrect_label_index(tiny_dataset, patch_counts):
+    from src.data.gtex_integrity import audit_gtex_dataset
+    csv_path = tiny_dataset / "metadata" / "train.csv"
+    df = pd.read_csv(csv_path)
+    df.loc[0, "label_index"] = 5
+    df.to_csv(csv_path, index=False)
+    with pytest.raises(ValueError, match="Label/index mismatch"):
+        audit_gtex_dataset(tiny_dataset)
+
+def test_E_label_class_identical(tiny_dataset, patch_counts):
+    from src.data.gtex_integrity import audit_gtex_dataset
+    csv_path = tiny_dataset / "metadata" / "train.csv"
+    df = pd.read_csv(csv_path)
+    df["class"] = df["label"]
+    df.to_csv(csv_path, index=False)
+    report = audit_gtex_dataset(tiny_dataset)
+    assert report["status"] == "PASS"
+
+def test_F_label_class_different(tiny_dataset, patch_counts):
+    from src.data.gtex_integrity import audit_gtex_dataset
+    csv_path = tiny_dataset / "metadata" / "train.csv"
+    df = pd.read_csv(csv_path)
+    df["class"] = "brain"
+    df.to_csv(csv_path, index=False)
+    with pytest.raises(ValueError, match="Both 'class' and 'label' columns exist but they are not identical"):
+        audit_gtex_dataset(tiny_dataset)
+
+def test_G_label_index_class_id_identical(tiny_dataset, patch_counts):
+    from src.data.gtex_integrity import audit_gtex_dataset
+    csv_path = tiny_dataset / "metadata" / "train.csv"
+    df = pd.read_csv(csv_path)
+    df["class_id"] = df["label_index"]
+    df.to_csv(csv_path, index=False)
+    report = audit_gtex_dataset(tiny_dataset)
+    assert report["status"] == "PASS"
+
+def test_H_label_index_class_id_different(tiny_dataset, patch_counts):
+    from src.data.gtex_integrity import audit_gtex_dataset
+    csv_path = tiny_dataset / "metadata" / "train.csv"
+    df = pd.read_csv(csv_path)
+    df["class_id"] = 1
+    df.to_csv(csv_path, index=False)
+    with pytest.raises(ValueError, match="Both 'class_id' and 'label_index' columns exist but they are not identical"):
+        audit_gtex_dataset(tiny_dataset)
+
+def test_I_no_class_column(tiny_dataset, patch_counts):
+    from src.data.gtex_integrity import audit_gtex_dataset
+    csv_path = tiny_dataset / "metadata" / "train.csv"
+    df = pd.read_csv(csv_path)
+    df = df.drop(columns=["label"])
+    df.to_csv(csv_path, index=False)
+    with pytest.raises(ValueError, match="Neither 'class' nor 'label' column found"):
+        audit_gtex_dataset(tiny_dataset)
+
+def test_J_no_index_column(tiny_dataset, patch_counts):
+    from src.data.gtex_integrity import audit_gtex_dataset
+    csv_path = tiny_dataset / "metadata" / "train.csv"
+    df = pd.read_csv(csv_path)
+    df = df.drop(columns=["label_index"])
+    df.to_csv(csv_path, index=False)
+    with pytest.raises(ValueError, match="Neither 'class_id' nor 'label_index' column found"):
+        audit_gtex_dataset(tiny_dataset)
+
+def test_K_nan_label(tiny_dataset, patch_counts):
+    from src.data.gtex_integrity import audit_gtex_dataset
+    csv_path = tiny_dataset / "metadata" / "train.csv"
+    df = pd.read_csv(csv_path)
+    df.loc[0, "label"] = pd.NA
+    df.to_csv(csv_path, index=False)
+    with pytest.raises(ValueError, match="NaN or empty string"):
+        audit_gtex_dataset(tiny_dataset)
+
+def test_L_out_of_bounds_index(tiny_dataset, patch_counts):
+    from src.data.gtex_integrity import audit_gtex_dataset
+    csv_path = tiny_dataset / "metadata" / "train.csv"
+    df = pd.read_csv(csv_path)
+    df.loc[0, "label_index"] = 15
+    df.to_csv(csv_path, index=False)
+    with pytest.raises(ValueError, match="Index out of range"):
+        audit_gtex_dataset(tiny_dataset)

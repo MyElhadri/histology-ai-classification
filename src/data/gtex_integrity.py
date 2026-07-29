@@ -40,7 +40,41 @@ def find_donor_column(columns: list[str]) -> str | None:
             return col
     return None
 
-
+def resolve_gtex_metadata_columns(df: pd.DataFrame) -> tuple[str, str]:
+    """Strictly resolve the class name and class index columns.
+    
+    Returns:
+        tuple[str, str]: (class_col_name, index_col_name)
+    """
+    has_class = "class" in df.columns
+    has_label = "label" in df.columns
+    
+    if has_class and has_label:
+        if not df["class"].equals(df["label"]):
+            raise ValueError("Both 'class' and 'label' columns exist but they are not identical.")
+        class_col = "label"
+    elif has_label:
+        class_col = "label"
+    elif has_class:
+        class_col = "class"
+    else:
+        raise ValueError("Neither 'class' nor 'label' column found in metadata.")
+        
+    has_class_id = "class_id" in df.columns
+    has_label_index = "label_index" in df.columns
+    
+    if has_class_id and has_label_index:
+        if not df["class_id"].equals(df["label_index"]):
+            raise ValueError("Both 'class_id' and 'label_index' columns exist but they are not identical.")
+        idx_col = "label_index"
+    elif has_label_index:
+        idx_col = "label_index"
+    elif has_class_id:
+        idx_col = "class_id"
+    else:
+        raise ValueError("Neither 'class_id' nor 'label_index' column found in metadata.")
+        
+    return class_col, idx_col
 def _parse_counts(counts_dict: dict, class_to_idx: dict, section_name: str) -> dict:
     parsed = {}
     for k, v in counts_dict.items():
@@ -261,7 +295,36 @@ def audit_gtex_dataset(dataset_dir: Path | str, output_report: Path | str | None
         total_actual += count
         
         # Verify class counts
-        class_col = "class" if "class" in df.columns else "label"
+        class_col, idx_col = resolve_gtex_metadata_columns(df)
+        
+        # Semantic validation
+        for i, row in df.iterrows():
+            lbl = row[class_col]
+            idx_val = row[idx_col]
+            
+            if pd.isna(lbl) or pd.isna(idx_val) or lbl == "":
+                raise ValueError(f"NaN or empty string found in {split}.csv at line {i+2}.")
+                
+            try:
+                idx = float(idx_val)
+            except ValueError:
+                raise ValueError(f"Index is not numeric in {split}.csv at line {i+2}: {idx_val}")
+                
+            if not idx.is_integer() or not (0 <= int(idx) <= 10):
+                raise ValueError(f"Index out of range or fractional in {split}.csv at line {i+2}: {idx_val}")
+                
+            idx = int(idx)
+            
+            if lbl not in class_mapping:
+                raise ValueError(f"Unknown label '{lbl}' in {split}.csv at line {i+2}.")
+                
+            expected_idx = class_mapping[lbl]
+            if idx != expected_idx:
+                raise ValueError(
+                    f"Label/index mismatch in {split}.csv at line {i+2}. "
+                    f"Label: {lbl}, found index: {idx}, expected: {expected_idx}."
+                )
+
         class_counts = df[class_col].value_counts().to_dict()
         for cls_name, splits_counts in EXPECTED_CLASS_COUNTS.items():
             expected = splits_counts[split]
